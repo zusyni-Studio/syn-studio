@@ -1,44 +1,67 @@
 --[[
     ╔══════════════════════════════════════════════════════╗
-    ║              SYN-STUDIO v2.0                        ║
+    ║              SYN-STUDIO v2.1                        ║
     ║         Blade Ball Auto Parry Script                ║
-    ║     Perfect Parry • Zero Miss • Anime UI            ║
-    ║             (STABLE & SAFE EDITION)                  ║
+    ║  Perfect Parry • Zero Miss • Anime UI • Responsive  ║
+    ║              (STABLE & SAFE EDITION)                 ║
     ╚══════════════════════════════════════════════════════╝
 ]]
 
 -- ═══════════════════════════════════════════
--- SAFE SERVICES (cloneref to prevent detection)
+-- SAFE SERVICES
 -- ═══════════════════════════════════════════
-local function GetSafeService(serviceName)
-    local success, service = pcall(function()
-        if cloneref then
-            return cloneref(game:GetService(serviceName))
-        end
-        return game:GetService(serviceName)
+local function SafeService(name)
+    local ok, svc = pcall(function()
+        if cloneref then return cloneref(game:GetService(name)) end
+        return game:GetService(name)
     end)
-    return success and service or game:GetService(serviceName)
+    return ok and svc or game:GetService(name)
 end
 
-local Players = GetSafeService("Players")
-local RunService = GetSafeService("RunService")
-local ReplicatedStorage = GetSafeService("ReplicatedStorage")
-local UserInputService = GetSafeService("UserInputService")
-local TweenService = GetSafeService("TweenService")
-local Workspace = GetSafeService("Workspace")
-local StarterGui = GetSafeService("StarterGui")
+local Players = SafeService("Players")
+local RunService = SafeService("RunService")
+local ReplicatedStorage = SafeService("ReplicatedStorage")
+local UserInputService = SafeService("UserInputService")
+local TweenService = SafeService("TweenService")
+local Workspace = SafeService("Workspace")
+local GuiService = SafeService("GuiService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
+
+-- ═══════════════════════════════════════════
+-- DEVICE & RESPONSIVE
+-- ═══════════════════════════════════════════
+local IsMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+local VP = Camera.ViewportSize
+
+local function GetViewport()
+    VP = Camera.ViewportSize
+    return VP
+end
+
+local function CalcWindowSize()
+    local v = GetViewport()
+    local w, h
+    if IsMobile then
+        local portrait = v.Y > v.X
+        w = math.clamp(v.X * (portrait and 0.92 or 0.7), 300, 520)
+        h = math.clamp(v.Y * (portrait and 0.55 or 0.7), 300, 560)
+    else
+        w = math.clamp(v.X * 0.35, 360, 500)
+        h = math.clamp(v.Y * 0.7, 350, 580)
+    end
+    return math.floor(w), math.floor(h)
+end
 
 -- ═══════════════════════════════════════════
 -- CONFIGURATION
 -- ═══════════════════════════════════════════
 local Config = {
     AutoParry = true,
-    ParryDistance = 55, -- Base parry distance
-    MinParryDistance = 15, -- Minimum distance for fast balls
-    MaxParryDistance = 85, -- Maximum distance for slow balls
+    ParryDistance = 55,
+    MinParryDistance = 15,
+    MaxParryDistance = 85,
     SpeedMultiplier = 1.0,
     PredictionEnabled = true,
     SmartTiming = true,
@@ -48,158 +71,141 @@ local Config = {
     ShowDistanceIndicator = true,
     ParrySuccessCount = 0,
     TotalParryAttempts = 0,
-    Theme = "Anime",
+    Mode = "Normal", -- "Brutal", "Normal", "Santai"
 }
 
+-- Mode presets
+local ModePresets = {
+    Brutal = {
+        ParryDistance = 85,
+        MinParryDistance = 25,
+        MaxParryDistance = 130,
+        SpeedMultiplier = 1.8,
+        PredictionEnabled = true,
+        SmartTiming = true,
+    },
+    Normal = {
+        ParryDistance = 55,
+        MinParryDistance = 15,
+        MaxParryDistance = 85,
+        SpeedMultiplier = 1.0,
+        PredictionEnabled = true,
+        SmartTiming = true,
+    },
+    Santai = {
+        ParryDistance = 30,
+        MinParryDistance = 8,
+        MaxParryDistance = 50,
+        SpeedMultiplier = 0.6,
+        PredictionEnabled = false,
+        SmartTiming = true,
+    },
+}
+
+local function ApplyMode(modeName)
+    local preset = ModePresets[modeName]
+    if not preset then return end
+    Config.Mode = modeName
+    for k, v in pairs(preset) do
+        Config[k] = v
+    end
+end
+
 -- ═══════════════════════════════════════════
--- COLOR PALETTE (Anime Theme)
+-- COLOR PALETTE
 -- ═══════════════════════════════════════════
 local Colors = {
-    Primary = Color3.fromRGB(255, 85, 125),       -- Sakura Pink
-    Secondary = Color3.fromRGB(120, 80, 255),      -- Purple
-    Accent = Color3.fromRGB(255, 170, 50),         -- Orange Gold
-    Success = Color3.fromRGB(80, 255, 120),        -- Green
-    Danger = Color3.fromRGB(255, 60, 60),          -- Red
-    Background = Color3.fromRGB(15, 15, 25),       -- Dark BG
-    BackgroundLight = Color3.fromRGB(25, 25, 45),  -- Lighter BG
-    Card = Color3.fromRGB(30, 30, 55),             -- Card BG
-    CardHover = Color3.fromRGB(40, 40, 70),        -- Card Hover
-    Text = Color3.fromRGB(255, 255, 255),           -- White
-    TextDim = Color3.fromRGB(180, 180, 200),       -- Dim text
-    Border = Color3.fromRGB(60, 60, 100),          -- Border
-    GlowPink = Color3.fromRGB(255, 100, 150),     -- Glow
-    GlowPurple = Color3.fromRGB(150, 100, 255),   -- Glow Purple
-    GlowBlue = Color3.fromRGB(80, 150, 255),      -- Glow Blue
+    Primary = Color3.fromRGB(255, 85, 125),
+    Secondary = Color3.fromRGB(120, 80, 255),
+    Accent = Color3.fromRGB(255, 170, 50),
+    Success = Color3.fromRGB(80, 255, 120),
+    Danger = Color3.fromRGB(255, 60, 60),
+    Background = Color3.fromRGB(15, 15, 25),
+    BackgroundLight = Color3.fromRGB(25, 25, 45),
+    Card = Color3.fromRGB(30, 30, 55),
+    CardHover = Color3.fromRGB(40, 40, 70),
+    Text = Color3.fromRGB(255, 255, 255),
+    TextDim = Color3.fromRGB(180, 180, 200),
+    Border = Color3.fromRGB(60, 60, 100),
+    GlowPink = Color3.fromRGB(255, 100, 150),
+    GlowPurple = Color3.fromRGB(150, 100, 255),
+    GlowBlue = Color3.fromRGB(80, 150, 255),
+    Brutal = Color3.fromRGB(255, 40, 40),
+    Santai = Color3.fromRGB(80, 200, 255),
 }
 
 -- ═══════════════════════════════════════════
 -- UTILITY FUNCTIONS
 -- ═══════════════════════════════════════════
-local function CreateCorner(parent, radius)
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, radius or 8)
-    corner.Parent = parent
-    return corner
+local function CreateCorner(p, r)
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 8); c.Parent = p; return c
 end
 
-local function CreateStroke(parent, color, thickness, transparency)
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = color or Colors.Border
-    stroke.Thickness = thickness or 1
-    stroke.Transparency = transparency or 0.5
-    stroke.Parent = parent
-    return stroke
+local function CreateStroke(p, col, th, tr)
+    local s = Instance.new("UIStroke"); s.Color = col or Colors.Border; s.Thickness = th or 1
+    s.Transparency = tr or 0.5; s.Parent = p; return s
 end
 
-local function CreateGradient(parent, color1, color2, rotation)
-    local gradient = Instance.new("UIGradient")
-    gradient.Color = ColorSequence.new(color1 or Colors.Primary, color2 or Colors.Secondary)
-    gradient.Rotation = rotation or 45
-    gradient.Parent = parent
-    return gradient
+local function CreateGradient(p, c1, c2, rot)
+    local g = Instance.new("UIGradient"); g.Color = ColorSequence.new(c1 or Colors.Primary, c2 or Colors.Secondary)
+    g.Rotation = rot or 45; g.Parent = p; return g
 end
 
-local function CreateShadow(parent, size)
-    local shadow = Instance.new("ImageLabel")
-    shadow.Name = "Shadow"
-    shadow.BackgroundTransparency = 1
-    shadow.Image = "rbxassetid://7912134082"
-    shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-    shadow.ImageTransparency = 0.5
-    shadow.Size = UDim2.new(1, size or 30, 1, size or 30)
-    shadow.Position = UDim2.new(0, -(size or 30)/2, 0, -(size or 30)/2)
-    shadow.ZIndex = parent.ZIndex - 1
-    shadow.Parent = shadow.Parent -- Safe hierarchy parenting
-    pcall(function() shadow.Parent = parent end)
-    return shadow
+local function CreateShadow(p, sz)
+    local s = Instance.new("ImageLabel"); s.Name = "_Sh"; s.BackgroundTransparency = 1
+    s.Image = "rbxassetid://7912134082"; s.ImageColor3 = Color3.new(0,0,0); s.ImageTransparency = 0.5
+    s.Size = UDim2.new(1, sz or 30, 1, sz or 30)
+    s.Position = UDim2.new(0, -(sz or 30)/2, 0, -(sz or 30)/2)
+    s.ZIndex = p.ZIndex - 1
+    pcall(function() s.Parent = p end)
+    return s
 end
 
-local function Tween(obj, props, duration, style, direction)
-    local tween = TweenService:Create(obj, TweenInfo.new(
-        duration or 0.3,
-        style or Enum.EasingStyle.Quint,
-        direction or Enum.EasingDirection.Out
-    ), props)
-    tween:Play()
-    return tween
+local function Tween(obj, props, dur, style, dir)
+    if not obj or not obj.Parent then return end
+    local t = TweenService:Create(obj, TweenInfo.new(dur or 0.3, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out), props)
+    t:Play(); return t
 end
 
-local function RippleEffect(button)
-    local ripple = Instance.new("Frame")
-    ripple.Name = "Ripple"
-    ripple.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    ripple.BackgroundTransparency = 0.7
-    ripple.BorderSizePixel = 0
-    ripple.ZIndex = button.ZIndex + 5
-    ripple.Parent = button
-    CreateCorner(ripple, 999)
-
-    local mouse = UserInputService:GetMouseLocation()
-    local absPos = button.AbsolutePosition
-    local relX = mouse.X - absPos.X
-    local relY = mouse.Y - absPos.Y
-
-    ripple.Size = UDim2.new(0, 0, 0, 0)
-    ripple.Position = UDim2.new(0, relX, 0, relY)
-    ripple.AnchorPoint = Vector2.new(0.5, 0.5)
-
-    local maxSize = math.max(button.AbsoluteSize.X, button.AbsoluteSize.Y) * 2.5
-    Tween(ripple, {
-        Size = UDim2.new(0, maxSize, 0, maxSize),
-        BackgroundTransparency = 1
-    }, 0.6, Enum.EasingStyle.Quint)
-
-    task.delay(0.6, function()
-        ripple:Destroy()
-    end)
+local function Ripple(btn, col)
+    local r = Instance.new("Frame"); r.BackgroundColor3 = col or Colors.Text
+    r.BackgroundTransparency = 0.7; r.BorderSizePixel = 0; r.ZIndex = btn.ZIndex + 5; r.Parent = btn
+    CreateCorner(r, 999)
+    local m = UserInputService:GetMouseLocation(); local a = btn.AbsolutePosition
+    r.Size = UDim2.new(0,0,0,0); r.Position = UDim2.new(0, m.X-a.X, 0, m.Y-a.Y)
+    r.AnchorPoint = Vector2.new(0.5,0.5)
+    local mx = math.max(btn.AbsoluteSize.X, btn.AbsoluteSize.Y) * 2.5
+    Tween(r, {Size = UDim2.new(0,mx,0,mx), BackgroundTransparency = 1}, 0.6)
+    task.delay(0.6, function() r:Destroy() end)
 end
 
 -- ═══════════════════════════════════════════
--- SAFE MAIN GUI CREATION (Anti-Crash)
+-- SAFE GUI CREATION
 -- ═══════════════════════════════════════════
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SynStudio_" .. tostring(math.random(100, 999))
+ScreenGui.Name = "SynStudio_" .. math.random(100,999)
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.DisplayOrder = 999
 
--- Metode teraman menaruh GUI agar tidak terdeteksi game & tidak crash
 local parented = false
-if gethui then
-    pcall(function()
-        ScreenGui.Parent = gethui()
-        parented = true
-    end)
-end
-if not parented then
-    pcall(function()
-        ScreenGui.Parent = game:GetService("CoreGui")
-        parented = true
-    end)
-end
-if not parented then
-    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end
+if gethui then pcall(function() ScreenGui.Parent = gethui(); parented = true end) end
+if not parented then pcall(function() ScreenGui.Parent = game:GetService("CoreGui"); parented = true end) end
+if not parented then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
 -- ═══════════════════════════════════════════
 -- NOTIFICATION SYSTEM
 -- ═══════════════════════════════════════════
-local NotificationHolder = Instance.new("Frame")
-NotificationHolder.Name = "Notifications"
-NotificationHolder.BackgroundTransparency = 1
-NotificationHolder.Size = UDim2.new(0, 300, 1, 0)
-NotificationHolder.Position = UDim2.new(1, -320, 0, 0)
-NotificationHolder.Parent = ScreenGui
+local NotifHolder = Instance.new("Frame")
+NotifHolder.Name = "Notifs"; NotifHolder.BackgroundTransparency = 1
+NotifHolder.Size = UDim2.new(0, IsMobile and 220 or 300, 1, 0)
+NotifHolder.Position = UDim2.new(1, -(IsMobile and 230 or 320), 0, 0)
+NotifHolder.ZIndex = 50; NotifHolder.Parent = ScreenGui
 
-local NotifLayout = Instance.new("UIListLayout")
-NotifLayout.Padding = UDim.new(0, 8)
-NotifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
-NotifLayout.SortOrder = Enum.SortOrder.LayoutOrder
-NotifLayout.Parent = NotificationHolder
-
-local NotifPadding = Instance.new("UIPadding")
-NotifPadding.PaddingBottom = UDim.new(0, 20)
-NotifPadding.Parent = NotificationHolder
+local nLayout = Instance.new("UIListLayout"); nLayout.Padding = UDim.new(0, 8)
+nLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+nLayout.SortOrder = Enum.SortOrder.LayoutOrder; nLayout.Parent = NotifHolder
+local nPad = Instance.new("UIPadding"); nPad.PaddingBottom = UDim.new(0, 20); nPad.Parent = NotifHolder
 
 local function Notify(title, message, duration, notifType)
     local color = Colors.Primary
@@ -207,143 +213,162 @@ local function Notify(title, message, duration, notifType)
     elseif notifType == "error" then color = Colors.Danger
     elseif notifType == "warning" then color = Colors.Accent end
 
-    local notif = Instance.new("Frame")
-    notif.Name = "Notification"
-    notif.BackgroundColor3 = Colors.Card
-    notif.Size = UDim2.new(1, 0, 0, 70)
-    notif.ClipsDescendants = true
-    notif.Parent = NotificationHolder
-    CreateCorner(notif, 10)
-    CreateStroke(notif, color, 1.5, 0.3)
+    local notif = Instance.new("Frame"); notif.BackgroundColor3 = Colors.Card
+    notif.Size = UDim2.new(1,0,0,65); notif.ClipsDescendants = true; notif.ZIndex = 51; notif.Parent = NotifHolder
+    CreateCorner(notif, 10); CreateStroke(notif, color, 1.5, 0.3)
 
-    -- Accent bar
-    local accentBar = Instance.new("Frame")
-    accentBar.BackgroundColor3 = color
-    accentBar.Size = UDim2.new(0, 4, 1, 0)
-    accentBar.BorderSizePixel = 0
-    accentBar.Parent = notif
+    local bar = Instance.new("Frame"); bar.BackgroundColor3 = color; bar.Size = UDim2.new(0,3,1,0)
+    bar.BorderSizePixel = 0; bar.ZIndex = 52; bar.Parent = notif
 
-    -- Icon
-    local icon = Instance.new("TextLabel")
-    icon.BackgroundTransparency = 1
-    icon.Size = UDim2.new(0, 30, 0, 30)
-    icon.Position = UDim2.new(0, 15, 0, 10)
-    icon.Font = Enum.Font.GothamBold
-    icon.TextSize = 20
-    icon.TextColor3 = color
-    icon.Parent = notif
+    local ico = Instance.new("TextLabel"); ico.BackgroundTransparency = 1
+    ico.Size = UDim2.new(0,25,0,25); ico.Position = UDim2.new(0,12,0,8)
+    ico.Font = Enum.Font.GothamBold; ico.TextSize = 16; ico.TextColor3 = color; ico.ZIndex = 52; ico.Parent = notif
+    if notifType == "success" then ico.Text = "✓"
+    elseif notifType == "error" then ico.Text = "✕"
+    elseif notifType == "warning" then ico.Text = "⚠"
+    else ico.Text = "★" end
 
-    if notifType == "success" then icon.Text = "✓"
-    elseif notifType == "error" then icon.Text = "✕"
-    elseif notifType == "warning" then icon.Text = "⚠"
-    else icon.Text = "★" end
+    local tLbl = Instance.new("TextLabel"); tLbl.BackgroundTransparency = 1
+    tLbl.Size = UDim2.new(1,-50,0,18); tLbl.Position = UDim2.new(0,42,0,8)
+    tLbl.Font = Enum.Font.GothamBold; tLbl.TextSize = IsMobile and 11 or 13; tLbl.TextColor3 = Colors.Text
+    tLbl.TextXAlignment = Enum.TextXAlignment.Left; tLbl.Text = title; tLbl.ZIndex = 52; tLbl.Parent = notif
 
-    -- Title
-    local titleLabel = Instance.new("TextLabel")
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.Size = UDim2.new(1, -60, 0, 22)
-    titleLabel.Position = UDim2.new(0, 50, 0, 10)
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextSize = 13
-    titleLabel.TextColor3 = Colors.Text
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    titleLabel.Text = title
-    titleLabel.Parent = notif
+    local mLbl = Instance.new("TextLabel"); mLbl.BackgroundTransparency = 1
+    mLbl.Size = UDim2.new(1,-50,0,16); mLbl.Position = UDim2.new(0,42,0,28)
+    mLbl.Font = Enum.Font.Gotham; mLbl.TextSize = IsMobile and 9 or 11; mLbl.TextColor3 = Colors.TextDim
+    mLbl.TextXAlignment = Enum.TextXAlignment.Left; mLbl.Text = message; mLbl.ZIndex = 52; mLbl.Parent = notif
 
-    -- Message
-    local msgLabel = Instance.new("TextLabel")
-    msgLabel.BackgroundTransparency = 1
-    msgLabel.Size = UDim2.new(1, -60, 0, 20)
-    msgLabel.Position = UDim2.new(0, 50, 0, 34)
-    msgLabel.Font = Enum.Font.Gotham
-    msgLabel.TextSize = 11
-    msgLabel.TextColor3 = Colors.TextDim
-    msgLabel.TextXAlignment = Enum.TextXAlignment.Left
-    msgLabel.Text = message
-    msgLabel.Parent = notif
+    local pBg = Instance.new("Frame"); pBg.BackgroundColor3 = Colors.BackgroundLight
+    pBg.Size = UDim2.new(1,-16,0,2); pBg.Position = UDim2.new(0,8,1,-6); pBg.BorderSizePixel = 0
+    pBg.ZIndex = 52; pBg.Parent = notif; CreateCorner(pBg, 1)
+    local pFill = Instance.new("Frame"); pFill.BackgroundColor3 = color
+    pFill.Size = UDim2.new(1,0,1,0); pFill.BorderSizePixel = 0; pFill.ZIndex = 53; pFill.Parent = pBg
+    CreateCorner(pFill, 1)
 
-    -- Progress bar
-    local progressBg = Instance.new("Frame")
-    progressBg.BackgroundColor3 = Colors.BackgroundLight
-    progressBg.Size = UDim2.new(1, -20, 0, 3)
-    progressBg.Position = UDim2.new(0, 10, 1, -8)
-    progressBg.BorderSizePixel = 0
-    progressBg.Parent = notif
-    CreateCorner(progressBg, 2)
-
-    local progressFill = Instance.new("Frame")
-    progressFill.BackgroundColor3 = color
-    progressFill.Size = UDim2.new(1, 0, 1, 0)
-    progressFill.BorderSizePixel = 0
-    progressFill.Parent = progressBg
-    CreateCorner(progressFill, 2)
-
-    -- Animate in
-    notif.BackgroundTransparency = 1
-    notif.Size = UDim2.new(1, 0, 0, 0)
-    Tween(notif, {Size = UDim2.new(1, 0, 0, 70), BackgroundTransparency = 0}, 0.4)
-    Tween(progressFill, {Size = UDim2.new(0, 0, 1, 0)}, duration or 3, Enum.EasingStyle.Linear)
+    notif.BackgroundTransparency = 1; notif.Size = UDim2.new(1,0,0,0)
+    Tween(notif, {Size = UDim2.new(1,0,0,65), BackgroundTransparency = 0}, 0.4)
+    Tween(pFill, {Size = UDim2.new(0,0,1,0)}, duration or 3, Enum.EasingStyle.Linear)
 
     task.delay(duration or 3, function()
-        Tween(notif, {Size = UDim2.new(1, 0, 0, 0), BackgroundTransparency = 1}, 0.3)
-        task.delay(0.35, function()
-            notif:Destroy()
-        end)
+        Tween(notif, {Size = UDim2.new(1,0,0,0), BackgroundTransparency = 1}, 0.3)
+        task.delay(0.35, function() notif:Destroy() end)
     end)
 end
 
 -- ═══════════════════════════════════════════
+-- FLOAT ICON (Minimize State)
+-- ═══════════════════════════════════════════
+local FloatIcon = Instance.new("TextButton")
+FloatIcon.Name = "FloatIcon"
+FloatIcon.BackgroundColor3 = Colors.Primary
+FloatIcon.Size = UDim2.new(0, IsMobile and 50 or 48, 0, IsMobile and 50 or 48)
+FloatIcon.Position = UDim2.new(0, 15, 0.5, -(IsMobile and 25 or 24))
+FloatIcon.Font = Enum.Font.GothamBold
+FloatIcon.TextSize = IsMobile and 22 or 20
+FloatIcon.TextColor3 = Colors.Text
+FloatIcon.Text = "⚔"
+FloatIcon.ZIndex = 30
+FloatIcon.Visible = false
+FloatIcon.Parent = ScreenGui
+CreateCorner(FloatIcon, 999)
+CreateStroke(FloatIcon, Colors.GlowPurple, 2, 0.3)
+CreateShadow(FloatIcon, 20)
+
+-- Float icon gradient background
+local floatGrad = Instance.new("UIGradient")
+floatGrad.Color = ColorSequence.new(Colors.Primary, Colors.Secondary)
+floatGrad.Rotation = 135
+floatGrad.Parent = FloatIcon
+
+-- Float icon pulse animation
+task.spawn(function()
+    while ScreenGui.Parent do
+        if FloatIcon.Visible then
+            Tween(FloatIcon, {Size = UDim2.new(0, (IsMobile and 54 or 52), 0, (IsMobile and 54 or 52))}, 1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+            task.wait(1)
+            Tween(FloatIcon, {Size = UDim2.new(0, (IsMobile and 50 or 48), 0, (IsMobile and 50 or 48))}, 1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+            task.wait(1)
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+-- Float icon dragging
+local floatDrag, floatDragInput, floatDragStart, floatStartPos
+FloatIcon.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        floatDrag = true; floatDragStart = input.Position; floatStartPos = FloatIcon.Position
+    end
+end)
+FloatIcon.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        floatDragInput = input
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == floatDragInput and floatDrag then
+        local delta = input.Position - floatDragStart
+        local vp = GetViewport()
+        local newX = math.clamp(floatStartPos.X.Offset + delta.X, 0, vp.X - 60)
+        local newY = math.clamp(floatStartPos.Y.Offset + delta.Y, -vp.Y/2 + 30, vp.Y/2 - 30)
+        FloatIcon.Position = UDim2.new(0, newX, 0.5, newY)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        floatDrag = false
+    end
+end)
+
+-- ═══════════════════════════════════════════
 -- MAIN WINDOW
 -- ═══════════════════════════════════════════
+local winW, winH = CalcWindowSize()
+
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.BackgroundColor3 = Colors.Background
-MainFrame.Size = UDim2.new(0, 480, 0, 560)
-MainFrame.Position = UDim2.new(0.5, -240, 0.5, -280)
+MainFrame.Size = UDim2.new(0, winW, 0, winH)
+MainFrame.Position = UDim2.new(0.5, -winW/2, 0.5, -winH/2)
 MainFrame.ClipsDescendants = true
+MainFrame.ZIndex = 10
 MainFrame.Parent = ScreenGui
-CreateCorner(MainFrame, 14)
+CreateCorner(MainFrame, IsMobile and 12 or 14)
 CreateStroke(MainFrame, Colors.Border, 1, 0.4)
 CreateShadow(MainFrame, 50)
 
--- Background glow effects
-local bgGlow1 = Instance.new("Frame")
-bgGlow1.Name = "BgGlow1"
-bgGlow1.BackgroundColor3 = Colors.Primary
-bgGlow1.BackgroundTransparency = 0.92
-bgGlow1.Size = UDim2.new(0, 200, 0, 200)
-bgGlow1.Position = UDim2.new(0, -50, 0, -50)
-bgGlow1.BorderSizePixel = 0
-bgGlow1.ZIndex = 0
-bgGlow1.Parent = MainFrame
-CreateCorner(bgGlow1, 100)
+-- Responsive resize
+Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+    local nw, nh = CalcWindowSize()
+    Tween(MainFrame, {Size = UDim2.new(0, nw, 0, nh), Position = UDim2.new(0.5, -nw/2, 0.5, -nh/2)}, 0.4)
+end)
 
-local bgGlow2 = Instance.new("Frame")
-bgGlow2.Name = "BgGlow2"
-bgGlow2.BackgroundColor3 = Colors.Secondary
-bgGlow2.BackgroundTransparency = 0.92
-bgGlow2.Size = UDim2.new(0, 250, 0, 250)
-bgGlow2.Position = UDim2.new(1, -150, 1, -150)
-bgGlow2.BorderSizePixel = 0
-bgGlow2.ZIndex = 0
-bgGlow2.Parent = MainFrame
-CreateCorner(bgGlow2, 125)
+-- BG Glows
+local bgG1 = Instance.new("Frame"); bgG1.BackgroundColor3 = Colors.Primary
+bgG1.BackgroundTransparency = 0.92; bgG1.Size = UDim2.new(0,200,0,200)
+bgG1.Position = UDim2.new(0,-50,0,-50); bgG1.BorderSizePixel = 0; bgG1.ZIndex = 0
+bgG1.Parent = MainFrame; CreateCorner(bgG1, 100)
 
--- Animate background glows
+local bgG2 = Instance.new("Frame"); bgG2.BackgroundColor3 = Colors.Secondary
+bgG2.BackgroundTransparency = 0.92; bgG2.Size = UDim2.new(0,250,0,250)
+bgG2.Position = UDim2.new(1,-150,1,-150); bgG2.BorderSizePixel = 0; bgG2.ZIndex = 0
+bgG2.Parent = MainFrame; CreateCorner(bgG2, 125)
+
 task.spawn(function()
     while ScreenGui.Parent do
-        Tween(bgGlow1, {Position = UDim2.new(0, -30, 0, -30)}, 3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+        Tween(bgG1, {Position = UDim2.new(0,-30,0,-30)}, 3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
         task.wait(3)
-        Tween(bgGlow1, {Position = UDim2.new(0, -70, 0, -70)}, 3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+        Tween(bgG1, {Position = UDim2.new(0,-70,0,-70)}, 3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
         task.wait(3)
     end
 end)
 
 task.spawn(function()
     while ScreenGui.Parent do
-        Tween(bgGlow2, {Position = UDim2.new(1, -130, 1, -130)}, 4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+        Tween(bgG2, {Position = UDim2.new(1,-130,1,-130)}, 4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
         task.wait(4)
-        Tween(bgGlow2, {Position = UDim2.new(1, -170, 1, -170)}, 4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+        Tween(bgG2, {Position = UDim2.new(1,-170,1,-170)}, 4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
         task.wait(4)
     end
 end)
@@ -351,55 +376,34 @@ end)
 -- ═══════════════════════════════════════════
 -- TITLE BAR
 -- ═══════════════════════════════════════════
-local TitleBar = Instance.new("Frame")
-TitleBar.Name = "TitleBar"
-TitleBar.BackgroundColor3 = Colors.BackgroundLight
-TitleBar.Size = UDim2.new(1, 0, 0, 55)
-TitleBar.BorderSizePixel = 0
-TitleBar.ZIndex = 5
-TitleBar.Parent = MainFrame
-CreateCorner(TitleBar, 14)
+local hH = IsMobile and 48 or 55
+local TitleBar = Instance.new("Frame"); TitleBar.Name = "TitleBar"
+TitleBar.BackgroundColor3 = Colors.BackgroundLight; TitleBar.Size = UDim2.new(1,0,0,hH)
+TitleBar.BorderSizePixel = 0; TitleBar.ZIndex = 15; TitleBar.Parent = MainFrame
+CreateCorner(TitleBar, IsMobile and 12 or 14)
 
--- Fix bottom corners of title bar
-local titleBarFix = Instance.new("Frame")
-titleBarFix.BackgroundColor3 = Colors.BackgroundLight
-titleBarFix.Size = UDim2.new(1, 0, 0, 15)
-titleBarFix.Position = UDim2.new(0, 0, 1, -15)
-titleBarFix.BorderSizePixel = 0
-titleBarFix.ZIndex = 5
-titleBarFix.Parent = TitleBar
+local tbFix = Instance.new("Frame"); tbFix.BackgroundColor3 = Colors.BackgroundLight
+tbFix.Size = UDim2.new(1,0,0,15); tbFix.Position = UDim2.new(0,0,1,-15)
+tbFix.BorderSizePixel = 0; tbFix.ZIndex = 15; tbFix.Parent = TitleBar
 
--- Title gradient line
-local titleGradientLine = Instance.new("Frame")
-titleGradientLine.BackgroundColor3 = Colors.Primary
-titleGradientLine.Size = UDim2.new(1, 0, 0, 2)
-titleGradientLine.Position = UDim2.new(0, 0, 1, -2)
-titleGradientLine.BorderSizePixel = 0
-titleGradientLine.ZIndex = 6
-titleGradientLine.Parent = TitleBar
-CreateGradient(titleGradientLine, Colors.Primary, Colors.Secondary, 0)
+local tbLine = Instance.new("Frame"); tbLine.BackgroundColor3 = Colors.Primary
+tbLine.Size = UDim2.new(1,0,0,2); tbLine.Position = UDim2.new(0,0,1,-2)
+tbLine.BorderSizePixel = 0; tbLine.ZIndex = 16; tbLine.Parent = TitleBar
+CreateGradient(tbLine, Colors.Primary, Colors.Secondary, 0)
 
--- Logo icon (anime style star)
-local logoFrame = Instance.new("Frame")
-logoFrame.BackgroundColor3 = Colors.Primary
-logoFrame.Size = UDim2.new(0, 35, 0, 35)
-logoFrame.Position = UDim2.new(0, 12, 0.5, -17)
-logoFrame.ZIndex = 7
-logoFrame.Parent = TitleBar
-CreateCorner(logoFrame, 10)
+-- Logo
+local logoFrame = Instance.new("Frame"); logoFrame.BackgroundColor3 = Colors.Primary
+logoFrame.Size = UDim2.new(0, IsMobile and 30 or 35, 0, IsMobile and 30 or 35)
+logoFrame.Position = UDim2.new(0, IsMobile and 8 or 12, 0.5, -(IsMobile and 15 or 17))
+logoFrame.ZIndex = 17; logoFrame.Parent = TitleBar
+CreateCorner(logoFrame, IsMobile and 8 or 10)
 CreateGradient(logoFrame, Colors.Primary, Colors.GlowPurple, 135)
 
-local logoText = Instance.new("TextLabel")
-logoText.BackgroundTransparency = 1
-logoText.Size = UDim2.new(1, 0, 1, 0)
-logoText.Font = Enum.Font.GothamBold
-logoText.TextSize = 18
-logoText.TextColor3 = Colors.Text
-logoText.Text = "⚔"
-logoText.ZIndex = 8
-logoText.Parent = logoFrame
+local logoText = Instance.new("TextLabel"); logoText.BackgroundTransparency = 1
+logoText.Size = UDim2.new(1,0,1,0); logoText.Font = Enum.Font.GothamBold
+logoText.TextSize = IsMobile and 15 or 18; logoText.TextColor3 = Colors.Text
+logoText.Text = "⚔"; logoText.ZIndex = 18; logoText.Parent = logoFrame
 
--- Rotate logo animation
 task.spawn(function()
     while ScreenGui.Parent do
         Tween(logoFrame, {Rotation = 10}, 1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
@@ -409,42 +413,26 @@ task.spawn(function()
     end
 end)
 
--- Title text
-local titleText = Instance.new("TextLabel")
-titleText.BackgroundTransparency = 1
-titleText.Size = UDim2.new(0, 200, 0, 25)
-titleText.Position = UDim2.new(0, 55, 0, 8)
-titleText.Font = Enum.Font.GothamBold
-titleText.TextSize = 17
-titleText.TextColor3 = Colors.Text
-titleText.TextXAlignment = Enum.TextXAlignment.Left
-titleText.Text = "SYN-STUDIO"
-titleText.ZIndex = 7
-titleText.Parent = TitleBar
+local titleOff = IsMobile and 44 or 55
+local titleText = Instance.new("TextLabel"); titleText.BackgroundTransparency = 1
+titleText.Size = UDim2.new(0, 160, 0, 20)
+titleText.Position = UDim2.new(0, titleOff, 0, IsMobile and 6 or 8)
+titleText.Font = Enum.Font.GothamBold; titleText.TextSize = IsMobile and 14 or 17
+titleText.TextColor3 = Colors.Text; titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.Text = "SYN-STUDIO"; titleText.ZIndex = 17; titleText.Parent = TitleBar
 
--- Subtitle
-local subtitleText = Instance.new("TextLabel")
-subtitleText.BackgroundTransparency = 1
-subtitleText.Size = UDim2.new(0, 200, 0, 15)
-subtitleText.Position = UDim2.new(0, 55, 0, 32)
-subtitleText.Font = Enum.Font.Gotham
-subtitleText.TextSize = 10
-subtitleText.TextColor3 = Colors.TextDim
-subtitleText.TextXAlignment = Enum.TextXAlignment.Left
-subtitleText.Text = "⚡ Blade Ball Auto Parry • v2.0"
-subtitleText.ZIndex = 7
-subtitleText.Parent = TitleBar
+local subText = Instance.new("TextLabel"); subText.BackgroundTransparency = 1
+subText.Size = UDim2.new(0, 200, 0, 12)
+subText.Position = UDim2.new(0, titleOff, 0, IsMobile and 25 or 30)
+subText.Font = Enum.Font.Gotham; subText.TextSize = IsMobile and 8 or 10
+subText.TextColor3 = Colors.TextDim; subText.TextXAlignment = Enum.TextXAlignment.Left
+subText.Text = "⚡ Blade Ball Auto Parry • v2.1"; subText.ZIndex = 17; subText.Parent = TitleBar
 
--- Status indicator
-local statusDot = Instance.new("Frame")
-statusDot.BackgroundColor3 = Colors.Success
-statusDot.Size = UDim2.new(0, 8, 0, 8)
-statusDot.Position = UDim2.new(1, -70, 0.5, -4)
-statusDot.ZIndex = 7
-statusDot.Parent = TitleBar
-CreateCorner(statusDot, 4)
+-- Status dot
+local statusDot = Instance.new("Frame"); statusDot.BackgroundColor3 = Colors.Success
+statusDot.Size = UDim2.new(0,8,0,8); statusDot.Position = UDim2.new(1, IsMobile and -62 or -70, 0.5, -4)
+statusDot.ZIndex = 17; statusDot.Parent = TitleBar; CreateCorner(statusDot, 4)
 
--- Pulse animation for status dot
 task.spawn(function()
     while ScreenGui.Parent do
         Tween(statusDot, {BackgroundTransparency = 0.5}, 0.8, Enum.EasingStyle.Sine)
@@ -454,61 +442,45 @@ task.spawn(function()
     end
 end)
 
-local statusText = Instance.new("TextLabel")
-statusText.BackgroundTransparency = 1
-statusText.Size = UDim2.new(0, 45, 0, 20)
-statusText.Position = UDim2.new(1, -55, 0.5, -10)
-statusText.Font = Enum.Font.GothamBold
-statusText.TextSize = 10
-statusText.TextColor3 = Colors.Success
-statusText.Text = "ACTIVE"
-statusText.ZIndex = 7
-statusText.Parent = TitleBar
+local statusLabel = Instance.new("TextLabel"); statusLabel.BackgroundTransparency = 1
+statusLabel.Size = UDim2.new(0,42,0,16)
+statusLabel.Position = UDim2.new(1, IsMobile and -50 or -55, 0.5, -8)
+statusLabel.Font = Enum.Font.GothamBold; statusLabel.TextSize = IsMobile and 8 or 10
+statusLabel.TextColor3 = Colors.Success; statusLabel.Text = "ACTIVE"
+statusLabel.ZIndex = 17; statusLabel.Parent = TitleBar
 
--- Minimize button
-local minimizeBtn = Instance.new("TextButton")
-minimizeBtn.BackgroundColor3 = Colors.Card
-minimizeBtn.Size = UDim2.new(0, 30, 0, 30)
-minimizeBtn.Position = UDim2.new(1, -35, 0.5, -15)
-minimizeBtn.Font = Enum.Font.GothamBold
-minimizeBtn.TextSize = 16
-minimizeBtn.TextColor3 = Colors.TextDim
-minimizeBtn.Text = "−"
-minimizeBtn.ZIndex = 8
-minimizeBtn.Parent = TitleBar
-CreateCorner(minimizeBtn, 8)
+-- Minimize Button
+local minBtn = Instance.new("TextButton"); minBtn.BackgroundColor3 = Colors.Card
+minBtn.Size = UDim2.new(0, IsMobile and 28 or 30, 0, IsMobile and 28 or 30)
+minBtn.Position = UDim2.new(1, -(IsMobile and 32 or 35), 0.5, -(IsMobile and 14 or 15))
+minBtn.Font = Enum.Font.GothamBold; minBtn.TextSize = IsMobile and 14 or 16
+minBtn.TextColor3 = Colors.TextDim; minBtn.Text = "−"; minBtn.ZIndex = 18
+minBtn.Parent = TitleBar; CreateCorner(minBtn, 8)
 
 -- ═══════════════════════════════════════════
--- DRAGGING FUNCTIONALITY
+-- DRAGGING (Main Window)
 -- ═══════════════════════════════════════════
 local dragging, dragInput, dragStart, startPos
 
 TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = MainFrame.Position
+        dragging = true; dragStart = input.Position; startPos = MainFrame.Position
     end
 end)
-
 TitleBar.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
         dragInput = input
     end
 end)
-
 UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragging then
         local delta = input.Position - dragStart
-        Tween(MainFrame, {
-            Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X,
-                startPos.Y.Scale, startPos.Y.Offset + delta.Y
-            )
-        }, 0.08, Enum.EasingStyle.Quad)
+        local vp = GetViewport()
+        local nx = math.clamp(startPos.X.Offset + delta.X, -vp.X/2 + 50, vp.X/2 - 50)
+        local ny = math.clamp(startPos.Y.Offset + delta.Y, -vp.Y/2 + 30, vp.Y/2 - 30)
+        Tween(MainFrame, {Position = UDim2.new(startPos.X.Scale, nx, startPos.Y.Scale, ny)}, 0.08, Enum.EasingStyle.Quad)
     end
 end)
-
 UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = false
@@ -518,536 +490,428 @@ end)
 -- ═══════════════════════════════════════════
 -- CONTENT AREA
 -- ═══════════════════════════════════════════
-local ContentFrame = Instance.new("ScrollingFrame")
-ContentFrame.Name = "Content"
+local ContentFrame = Instance.new("ScrollingFrame"); ContentFrame.Name = "Content"
 ContentFrame.BackgroundTransparency = 1
-ContentFrame.Size = UDim2.new(1, -20, 1, -65)
-ContentFrame.Position = UDim2.new(0, 10, 0, 60)
-ContentFrame.ScrollBarThickness = 3
-ContentFrame.ScrollBarImageColor3 = Colors.Primary
-ContentFrame.CanvasSize = UDim2.new(0, 0, 0, 850)
-ContentFrame.ZIndex = 3
-ContentFrame.Parent = MainFrame
+ContentFrame.Size = UDim2.new(1, -16, 1, -(hH + 8))
+ContentFrame.Position = UDim2.new(0, 8, 0, hH + 4)
+ContentFrame.ScrollBarThickness = 3; ContentFrame.ScrollBarImageColor3 = Colors.Primary
+ContentFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ContentFrame.CanvasSize = UDim2.new(0,0,0,0)
+ContentFrame.ZIndex = 11; ContentFrame.Parent = MainFrame
 
-local contentLayout = Instance.new("UIListLayout")
-contentLayout.Padding = UDim.new(0, 10)
-contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
-contentLayout.Parent = ContentFrame
+local cLayout = Instance.new("UIListLayout"); cLayout.Padding = UDim.new(0, IsMobile and 8 or 10)
+cLayout.SortOrder = Enum.SortOrder.LayoutOrder; cLayout.Parent = ContentFrame
 
 -- ═══════════════════════════════════════════
 -- STATS DASHBOARD
 -- ═══════════════════════════════════════════
-local StatsCard = Instance.new("Frame")
-StatsCard.Name = "StatsCard"
-StatsCard.BackgroundColor3 = Colors.Card
-StatsCard.Size = UDim2.new(1, 0, 0, 90)
-StatsCard.LayoutOrder = 1
-StatsCard.ZIndex = 4
-StatsCard.Parent = ContentFrame
-CreateCorner(StatsCard, 12)
-CreateStroke(StatsCard, Colors.Border, 1, 0.6)
+local StatsCard = Instance.new("Frame"); StatsCard.BackgroundColor3 = Colors.Card
+StatsCard.Size = UDim2.new(1,0,0, IsMobile and 80 or 90); StatsCard.LayoutOrder = 1
+StatsCard.ZIndex = 12; StatsCard.Parent = ContentFrame
+CreateCorner(StatsCard, 12); CreateStroke(StatsCard, Colors.Border, 1, 0.6)
 
--- Stats header
-local statsHeader = Instance.new("TextLabel")
-statsHeader.BackgroundTransparency = 1
-statsHeader.Size = UDim2.new(1, 0, 0, 25)
-statsHeader.Position = UDim2.new(0, 15, 0, 8)
-statsHeader.Font = Enum.Font.GothamBold
-statsHeader.TextSize = 12
-statsHeader.TextColor3 = Colors.TextDim
-statsHeader.TextXAlignment = Enum.TextXAlignment.Left
-statsHeader.Text = "📊 LIVE STATISTICS"
-statsHeader.ZIndex = 5
-statsHeader.Parent = StatsCard
+local statsHdr = Instance.new("TextLabel"); statsHdr.BackgroundTransparency = 1
+statsHdr.Size = UDim2.new(1,0,0,20); statsHdr.Position = UDim2.new(0,12,0,6)
+statsHdr.Font = Enum.Font.GothamBold; statsHdr.TextSize = IsMobile and 10 or 12
+statsHdr.TextColor3 = Colors.TextDim; statsHdr.TextXAlignment = Enum.TextXAlignment.Left
+statsHdr.Text = "📊 LIVE STATISTICS"; statsHdr.ZIndex = 13; statsHdr.Parent = StatsCard
 
--- Stat boxes
-local function CreateStatBox(parent, posX, icon, label, value, color)
-    local box = Instance.new("Frame")
-    box.BackgroundColor3 = Colors.BackgroundLight
-    box.Size = UDim2.new(0, 130, 0, 48)
-    box.Position = UDim2.new(0, posX, 0, 35)
-    box.ZIndex = 5
-    box.Parent = parent
+local function CreateStatBox(parent, posScale, icon, label, value, color)
+    local boxW = IsMobile and 95 or 130
+    local box = Instance.new("Frame"); box.BackgroundColor3 = Colors.BackgroundLight
+    box.Size = UDim2.new(0.31, -4, 0, IsMobile and 42 or 48)
+    box.LayoutOrder = posScale
+    box.ZIndex = 13; box.Parent = parent
     CreateCorner(box, 8)
 
-    local iconLabel = Instance.new("TextLabel")
-    iconLabel.BackgroundTransparency = 1
-    iconLabel.Size = UDim2.new(0, 25, 1, 0)
-    iconLabel.Position = UDim2.new(0, 8, 0, 0)
-    iconLabel.Font = Enum.Font.GothamBold
-    iconLabel.TextSize = 16
-    iconLabel.TextColor3 = color
-    iconLabel.Text = icon
-    iconLabel.ZIndex = 6
-    iconLabel.Parent = box
+    local iLbl = Instance.new("TextLabel"); iLbl.BackgroundTransparency = 1
+    iLbl.Size = UDim2.new(0,20,1,0); iLbl.Position = UDim2.new(0,6,0,0)
+    iLbl.Font = Enum.Font.GothamBold; iLbl.TextSize = IsMobile and 13 or 16
+    iLbl.TextColor3 = color; iLbl.Text = icon; iLbl.ZIndex = 14; iLbl.Parent = box
 
-    local labelText = Instance.new("TextLabel")
-    labelText.BackgroundTransparency = 1
-    labelText.Size = UDim2.new(1, -40, 0, 15)
-    labelText.Position = UDim2.new(0, 35, 0, 6)
-    labelText.Font = Enum.Font.Gotham
-    labelText.TextSize = 9
-    labelText.TextColor3 = Colors.TextDim
-    labelText.TextXAlignment = Enum.TextXAlignment.Left
-    labelText.Text = label
-    labelText.ZIndex = 6
-    labelText.Parent = box
+    local lLbl = Instance.new("TextLabel"); lLbl.BackgroundTransparency = 1
+    lLbl.Size = UDim2.new(1,-30,0,12); lLbl.Position = UDim2.new(0,28,0,IsMobile and 4 or 6)
+    lLbl.Font = Enum.Font.Gotham; lLbl.TextSize = IsMobile and 7 or 9
+    lLbl.TextColor3 = Colors.TextDim; lLbl.TextXAlignment = Enum.TextXAlignment.Left
+    lLbl.Text = label; lLbl.ZIndex = 14; lLbl.Parent = box
 
-    local valueText = Instance.new("TextLabel")
-    valueText.Name = "Value"
-    valueText.BackgroundTransparency = 1
-    valueText.Size = UDim2.new(1, -40, 0, 20)
-    valueText.Position = UDim2.new(0, 35, 0, 22)
-    valueText.Font = Enum.Font.GothamBold
-    valueText.TextSize = 15
-    valueText.TextColor3 = color
-    valueText.TextXAlignment = Enum.TextXAlignment.Left
-    valueText.Text = value
-    valueText.ZIndex = 6
-    valueText.Parent = box
-
-    return valueText
+    local vLbl = Instance.new("TextLabel"); vLbl.Name = "Value"; vLbl.BackgroundTransparency = 1
+    vLbl.Size = UDim2.new(1,-30,0,16); vLbl.Position = UDim2.new(0,28,0, IsMobile and 17 or 22)
+    vLbl.Font = Enum.Font.GothamBold; vLbl.TextSize = IsMobile and 12 or 15
+    vLbl.TextColor3 = color; vLbl.TextXAlignment = Enum.TextXAlignment.Left
+    vLbl.Text = value; vLbl.ZIndex = 14; vLbl.Parent = box
+    return vLbl
 end
 
-local parryCountLabel = CreateStatBox(StatsCard, 15, "⚔", "PARRIES", "0", Colors.Primary)
-local successRateLabel = CreateStatBox(StatsCard, 155, "✦", "SUCCESS", "100%", Colors.Success)
-local ballSpeedLabel = CreateStatBox(StatsCard, 295, "⚡", "BALL SPEED", "0", Colors.Accent)
+-- Stats row
+local statsRow = Instance.new("Frame"); statsRow.BackgroundTransparency = 1
+statsRow.Size = UDim2.new(1,-16,0, IsMobile and 42 or 48)
+statsRow.Position = UDim2.new(0,8,0, IsMobile and 28 or 35)
+statsRow.ZIndex = 13; statsRow.Parent = StatsCard
+local sRowLayout = Instance.new("UIListLayout"); sRowLayout.FillDirection = Enum.FillDirection.Horizontal
+sRowLayout.Padding = UDim.new(0,6); sRowLayout.SortOrder = Enum.SortOrder.LayoutOrder
+sRowLayout.Parent = statsRow
+
+local parryCountLabel = CreateStatBox(statsRow, 1, "⚔", "PARRIES", "0", Colors.Primary)
+local successRateLabel = CreateStatBox(statsRow, 2, "✦", "SUCCESS", "100%", Colors.Success)
+local ballSpeedLabel = CreateStatBox(statsRow, 3, "⚡", "SPEED", "0", Colors.Accent)
 
 -- ═══════════════════════════════════════════
--- SECTION: AUTO PARRY
+-- COMPONENT BUILDERS
 -- ═══════════════════════════════════════════
 local function CreateSection(title, icon, layoutOrder)
-    local section = Instance.new("Frame")
-    section.Name = title
-    section.BackgroundColor3 = Colors.Card
-    section.Size = UDim2.new(1, 0, 0, 0) -- Will be auto-sized
-    section.AutomaticSize = Enum.AutomaticSize.Y
-    section.LayoutOrder = layoutOrder
-    section.ZIndex = 4
-    section.Parent = ContentFrame
-    CreateCorner(section, 12)
-    CreateStroke(section, Colors.Border, 1, 0.6)
+    local sec = Instance.new("Frame"); sec.Name = title; sec.BackgroundColor3 = Colors.Card
+    sec.Size = UDim2.new(1,0,0,0); sec.AutomaticSize = Enum.AutomaticSize.Y
+    sec.LayoutOrder = layoutOrder; sec.ZIndex = 12; sec.Parent = ContentFrame
+    CreateCorner(sec, 12); CreateStroke(sec, Colors.Border, 1, 0.6)
 
-    local sectionPadding = Instance.new("UIPadding")
-    sectionPadding.PaddingTop = UDim.new(0, 12)
-    sectionPadding.PaddingBottom = UDim.new(0, 12)
-    sectionPadding.PaddingLeft = UDim.new(0, 15)
-    sectionPadding.PaddingRight = UDim.new(0, 15)
-    sectionPadding.Parent = section
+    local pad = Instance.new("UIPadding"); pad.PaddingTop = UDim.new(0,10)
+    pad.PaddingBottom = UDim.new(0,10); pad.PaddingLeft = UDim.new(0,12)
+    pad.PaddingRight = UDim.new(0,12); pad.Parent = sec
 
-    local sectionLayout = Instance.new("UIListLayout")
-    sectionLayout.Padding = UDim.new(0, 10)
-    sectionLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    sectionLayout.Parent = section
+    local lay = Instance.new("UIListLayout"); lay.Padding = UDim.new(0, IsMobile and 7 or 10)
+    lay.SortOrder = Enum.SortOrder.LayoutOrder; lay.Parent = sec
 
-    -- Header
-    local header = Instance.new("TextLabel")
-    header.BackgroundTransparency = 1
-    header.Size = UDim2.new(1, 0, 0, 22)
-    header.Font = Enum.Font.GothamBold
-    header.TextSize = 13
-    header.TextColor3 = Colors.Text
-    header.TextXAlignment = Enum.TextXAlignment.Left
-    header.Text = icon .. "  " .. title
-    header.LayoutOrder = 0
-    header.ZIndex = 5
-    header.Parent = section
+    local hdr = Instance.new("TextLabel"); hdr.BackgroundTransparency = 1
+    hdr.Size = UDim2.new(1,0,0,20); hdr.Font = Enum.Font.GothamBold
+    hdr.TextSize = IsMobile and 11 or 13; hdr.TextColor3 = Colors.Text
+    hdr.TextXAlignment = Enum.TextXAlignment.Left; hdr.Text = icon.."  "..title
+    hdr.LayoutOrder = 0; hdr.ZIndex = 13; hdr.Parent = sec
 
-    -- Divider
-    local divider = Instance.new("Frame")
-    divider.BackgroundColor3 = Colors.Border
-    divider.BackgroundTransparency = 0.5
-    divider.Size = UDim2.new(1, 0, 0, 1)
-    divider.BorderSizePixel = 0
-    divider.LayoutOrder = 1
-    divider.ZIndex = 5
-    divider.Parent = section
-
-    return section
+    local div = Instance.new("Frame"); div.BackgroundColor3 = Colors.Border
+    div.BackgroundTransparency = 0.5; div.Size = UDim2.new(1,0,0,1)
+    div.BorderSizePixel = 0; div.LayoutOrder = 1; div.ZIndex = 13; div.Parent = sec
+    return sec
 end
 
--- Toggle Switch Creator
 local function CreateToggle(parent, label, default, layoutOrder, callback)
-    local toggleFrame = Instance.new("Frame")
-    toggleFrame.BackgroundColor3 = Colors.BackgroundLight
-    toggleFrame.Size = UDim2.new(1, 0, 0, 40)
-    toggleFrame.LayoutOrder = layoutOrder
-    toggleFrame.ZIndex = 5
-    toggleFrame.Parent = parent
-    CreateCorner(toggleFrame, 8)
+    local cH = IsMobile and 36 or 40
+    local f = Instance.new("Frame"); f.BackgroundColor3 = Colors.BackgroundLight
+    f.Size = UDim2.new(1,0,0,cH); f.LayoutOrder = layoutOrder; f.ZIndex = 13; f.Parent = parent
+    CreateCorner(f, 8)
 
-    local toggleLabel = Instance.new("TextLabel")
-    toggleLabel.BackgroundTransparency = 1
-    toggleLabel.Size = UDim2.new(1, -65, 1, 0)
-    toggleLabel.Position = UDim2.new(0, 12, 0, 0)
-    toggleLabel.Font = Enum.Font.Gotham
-    toggleLabel.TextSize = 12
-    toggleLabel.TextColor3 = Colors.Text
-    toggleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    toggleLabel.Text = label
-    toggleLabel.ZIndex = 6
-    toggleLabel.Parent = toggleFrame
+    local l = Instance.new("TextLabel"); l.BackgroundTransparency = 1
+    l.Size = UDim2.new(1,-60,1,0); l.Position = UDim2.new(0,10,0,0)
+    l.Font = Enum.Font.Gotham; l.TextSize = IsMobile and 10 or 12; l.TextColor3 = Colors.Text
+    l.TextXAlignment = Enum.TextXAlignment.Left; l.Text = label; l.ZIndex = 14; l.Parent = f
 
-    local toggleBg = Instance.new("Frame")
-    toggleBg.BackgroundColor3 = default and Colors.Primary or Color3.fromRGB(60, 60, 80)
-    toggleBg.Size = UDim2.new(0, 44, 0, 22)
-    toggleBg.Position = UDim2.new(1, -54, 0.5, -11)
-    toggleBg.ZIndex = 6
-    toggleBg.Parent = toggleFrame
-    CreateCorner(toggleBg, 11)
+    local tW, tH = IsMobile and 38 or 44, IsMobile and 18 or 22
+    local kS = tH - 4
 
-    local toggleCircle = Instance.new("Frame")
-    toggleCircle.BackgroundColor3 = Colors.Text
-    toggleCircle.Size = UDim2.new(0, 18, 0, 18)
-    toggleCircle.Position = default and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9)
-    toggleCircle.ZIndex = 7
-    toggleCircle.Parent = toggleBg
-    CreateCorner(toggleCircle, 9)
+    local tBg = Instance.new("Frame"); tBg.BackgroundColor3 = default and Colors.Primary or Color3.fromRGB(60,60,80)
+    tBg.Size = UDim2.new(0,tW,0,tH); tBg.Position = UDim2.new(1,-(tW+8),0.5,-tH/2)
+    tBg.ZIndex = 14; tBg.Parent = f; CreateCorner(tBg, tH/2)
+
+    local tC = Instance.new("Frame"); tC.BackgroundColor3 = Colors.Text
+    tC.Size = UDim2.new(0,kS,0,kS)
+    tC.Position = default and UDim2.new(1,-(kS+2),0.5,-kS/2) or UDim2.new(0,2,0.5,-kS/2)
+    tC.ZIndex = 15; tC.Parent = tBg; CreateCorner(tC, kS/2)
 
     local enabled = default
-    local toggleButton = Instance.new("TextButton")
-    toggleButton.BackgroundTransparency = 1
-    toggleButton.Size = UDim2.new(1, 0, 1, 0)
-    toggleButton.Text = ""
-    toggleButton.ZIndex = 8
-    toggleButton.Parent = toggleFrame
+    local btn = Instance.new("TextButton"); btn.BackgroundTransparency = 1
+    btn.Size = UDim2.new(1,0,1,0); btn.Text = ""; btn.ZIndex = 16; btn.Parent = f
 
-    toggleButton.MouseButton1Click:Connect(function()
-        enabled = not enabled
-        RippleEffect(toggleFrame)
-
+    btn.MouseButton1Click:Connect(function()
+        enabled = not enabled; Ripple(f, Colors.Primary)
         if enabled then
-            Tween(toggleBg, {BackgroundColor3 = Colors.Primary}, 0.3)
-            Tween(toggleCircle, {Position = UDim2.new(1, -20, 0.5, -9)}, 0.3, Enum.EasingStyle.Back)
+            Tween(tBg, {BackgroundColor3 = Colors.Primary}, 0.3)
+            Tween(tC, {Position = UDim2.new(1,-(kS+2),0.5,-kS/2)}, 0.3, Enum.EasingStyle.Back)
         else
-            Tween(toggleBg, {BackgroundColor3 = Color3.fromRGB(60, 60, 80)}, 0.3)
-            Tween(toggleCircle, {Position = UDim2.new(0, 2, 0.5, -9)}, 0.3, Enum.EasingStyle.Back)
+            Tween(tBg, {BackgroundColor3 = Color3.fromRGB(60,60,80)}, 0.3)
+            Tween(tC, {Position = UDim2.new(0,2,0.5,-kS/2)}, 0.3, Enum.EasingStyle.Back)
         end
-
         if callback then callback(enabled) end
     end)
 
-    -- Hover effect
-    toggleButton.MouseEnter:Connect(function()
-        Tween(toggleFrame, {BackgroundColor3 = Colors.CardHover}, 0.2)
-    end)
-    toggleButton.MouseLeave:Connect(function()
-        Tween(toggleFrame, {BackgroundColor3 = Colors.BackgroundLight}, 0.2)
-    end)
-
-    return toggleFrame
+    btn.MouseEnter:Connect(function() Tween(f, {BackgroundColor3 = Colors.CardHover}, 0.2) end)
+    btn.MouseLeave:Connect(function() Tween(f, {BackgroundColor3 = Colors.BackgroundLight}, 0.2) end)
+    return f
 end
 
--- Slider Creator
 local function CreateSlider(parent, label, min, max, default, layoutOrder, callback)
-    local sliderFrame = Instance.new("Frame")
-    sliderFrame.BackgroundColor3 = Colors.BackgroundLight
-    sliderFrame.Size = UDim2.new(1, 0, 0, 55)
-    sliderFrame.LayoutOrder = layoutOrder
-    sliderFrame.ZIndex = 5
-    sliderFrame.Parent = parent
-    CreateCorner(sliderFrame, 8)
+    local cH = IsMobile and 48 or 55
+    local f = Instance.new("Frame"); f.BackgroundColor3 = Colors.BackgroundLight
+    f.Size = UDim2.new(1,0,0,cH); f.LayoutOrder = layoutOrder; f.ZIndex = 13; f.Parent = parent
+    CreateCorner(f, 8)
 
-    local sliderLabel = Instance.new("TextLabel")
-    sliderLabel.BackgroundTransparency = 1
-    sliderLabel.Size = UDim2.new(1, -60, 0, 20)
-    sliderLabel.Position = UDim2.new(0, 12, 0, 6)
-    sliderLabel.Font = Enum.Font.Gotham
-    sliderLabel.TextSize = 11
-    sliderLabel.TextColor3 = Colors.Text
-    sliderLabel.TextXAlignment = Enum.TextXAlignment.Left
-    sliderLabel.Text = label
-    sliderLabel.ZIndex = 6
-    sliderLabel.Parent = sliderFrame
+    local l = Instance.new("TextLabel"); l.BackgroundTransparency = 1
+    l.Size = UDim2.new(1,-55,0,18); l.Position = UDim2.new(0,10,0,4)
+    l.Font = Enum.Font.Gotham; l.TextSize = IsMobile and 9 or 11; l.TextColor3 = Colors.Text
+    l.TextXAlignment = Enum.TextXAlignment.Left; l.Text = label; l.ZIndex = 14; l.Parent = f
 
-    local valueLabel = Instance.new("TextLabel")
-    valueLabel.Name = "ValueLabel"
-    valueLabel.BackgroundTransparency = 1
-    valueLabel.Size = UDim2.new(0, 50, 0, 20)
-    valueLabel.Position = UDim2.new(1, -55, 0, 6)
-    valueLabel.Font = Enum.Font.GothamBold
-    valueLabel.TextSize = 12
-    valueLabel.TextColor3 = Colors.Primary
-    valueLabel.Text = tostring(default)
-    valueLabel.ZIndex = 6
-    valueLabel.Parent = sliderFrame
+    local vl = Instance.new("TextLabel"); vl.BackgroundTransparency = 1
+    vl.Size = UDim2.new(0,45,0,18); vl.Position = UDim2.new(1,-50,0,4)
+    vl.Font = Enum.Font.GothamBold; vl.TextSize = IsMobile and 10 or 12
+    vl.TextColor3 = Colors.Primary; vl.Text = tostring(default); vl.ZIndex = 14; vl.Parent = f
 
-    local sliderBg = Instance.new("Frame")
-    sliderBg.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
-    sliderBg.Size = UDim2.new(1, -24, 0, 8)
-    sliderBg.Position = UDim2.new(0, 12, 0, 35)
-    sliderBg.ZIndex = 6
-    sliderBg.Parent = sliderFrame
-    CreateCorner(sliderBg, 4)
+    local sBg = Instance.new("Frame"); sBg.BackgroundColor3 = Color3.fromRGB(40,40,65)
+    sBg.Size = UDim2.new(1,-20,0,6); sBg.Position = UDim2.new(0,10,0, IsMobile and 28 or 33)
+    sBg.ZIndex = 14; sBg.Parent = f; CreateCorner(sBg, 3)
 
-    local sliderFill = Instance.new("Frame")
-    sliderFill.BackgroundColor3 = Colors.Primary
-    sliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
-    sliderFill.BorderSizePixel = 0
-    sliderFill.ZIndex = 7
-    sliderFill.Parent = sliderBg
-    CreateCorner(sliderFill, 4)
-    CreateGradient(sliderFill, Colors.Primary, Colors.GlowPurple, 0)
+    local sFill = Instance.new("Frame"); sFill.BackgroundColor3 = Colors.Primary
+    sFill.Size = UDim2.new((default-min)/(max-min),0,1,0); sFill.BorderSizePixel = 0
+    sFill.ZIndex = 15; sFill.Parent = sBg; CreateCorner(sFill, 3)
+    CreateGradient(sFill, Colors.Primary, Colors.GlowPurple, 0)
 
-    local sliderKnob = Instance.new("Frame")
-    sliderKnob.BackgroundColor3 = Colors.Text
-    sliderKnob.Size = UDim2.new(0, 16, 0, 16)
-    sliderKnob.Position = UDim2.new((default - min) / (max - min), -8, 0.5, -8)
-    sliderKnob.ZIndex = 8
-    sliderKnob.Parent = sliderBg
-    CreateCorner(sliderKnob, 8)
-    CreateStroke(sliderKnob, Colors.Primary, 2, 0)
+    local kS = IsMobile and 14 or 16
+    local sKnob = Instance.new("Frame"); sKnob.BackgroundColor3 = Colors.Text
+    sKnob.Size = UDim2.new(0,kS,0,kS)
+    sKnob.Position = UDim2.new((default-min)/(max-min),-kS/2,0.5,-kS/2)
+    sKnob.ZIndex = 16; sKnob.Parent = sBg; CreateCorner(sKnob, kS/2)
+    CreateStroke(sKnob, Colors.Primary, 2, 0)
 
-    -- Slider interaction
     local sliding = false
-    local sliderButton = Instance.new("TextButton")
-    sliderButton.BackgroundTransparency = 1
-    sliderButton.Size = UDim2.new(1, 0, 0, 25)
-    sliderButton.Position = UDim2.new(0, 0, 0, 28)
-    sliderButton.Text = ""
-    sliderButton.ZIndex = 9
-    sliderButton.Parent = sliderFrame
+    local sBtn = Instance.new("TextButton"); sBtn.BackgroundTransparency = 1
+    sBtn.Size = UDim2.new(1,0,0,20); sBtn.Position = UDim2.new(0,0,0,IsMobile and 22 or 26)
+    sBtn.Text = ""; sBtn.ZIndex = 17; sBtn.Parent = f
 
-    sliderButton.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            sliding = true
+    sBtn.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then sliding = true end
+    end)
+    UserInputService.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then sliding = false end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if sliding and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+            local rel = math.clamp((inp.Position.X - sBg.AbsolutePosition.X) / sBg.AbsoluteSize.X, 0, 1)
+            local val = math.floor(min + (max-min)*rel)
+            Tween(sFill, {Size = UDim2.new(rel,0,1,0)}, 0.05)
+            Tween(sKnob, {Position = UDim2.new(rel,-kS/2,0.5,-kS/2)}, 0.05)
+            vl.Text = tostring(val)
+            if callback then callback(val) end
         end
     end)
-
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            sliding = false
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if sliding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local rel = (input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X
-            rel = math.clamp(rel, 0, 1)
-            local value = math.floor(min + (max - min) * rel)
-
-            Tween(sliderFill, {Size = UDim2.new(rel, 0, 1, 0)}, 0.05)
-            Tween(sliderKnob, {Position = UDim2.new(rel, -8, 0.5, -8)}, 0.05)
-            valueLabel.Text = tostring(value)
-
-            if callback then callback(value) end
-        end
-    end)
-
-    return sliderFrame
+    return f
 end
 
 -- ═══════════════════════════════════════════
--- CREATE SECTIONS
+-- MODE SELECTOR (Brutal / Normal / Santai)
 -- ═══════════════════════════════════════════
+local function CreateModeSelector(parent, layoutOrder)
+    local cH = IsMobile and 44 or 50
+    local f = Instance.new("Frame"); f.BackgroundColor3 = Colors.BackgroundLight
+    f.Size = UDim2.new(1,0,0,cH); f.LayoutOrder = layoutOrder; f.ZIndex = 13; f.Parent = parent
+    CreateCorner(f, 8)
 
--- Auto Parry Section
-local parrySection = CreateSection("AUTO PARRY", "⚔", 2)
+    local modes = {
+        {name = "Brutal", icon = "🔥", color = Colors.Brutal, desc = "Jarak jauh, sangat agresif"},
+        {name = "Normal", icon = "⚡", color = Colors.Primary, desc = "Seimbang & konsisten"},
+        {name = "Santai", icon = "🛡", color = Colors.Santai, desc = "Hanya jarak dekat, aman"},
+    }
 
-CreateToggle(parrySection, "Enable Auto Parry", true, 2, function(enabled)
-    Config.AutoParry = enabled
-    statusText.Text = enabled and "ACTIVE" or "IDLE"
-    statusText.TextColor3 = enabled and Colors.Success or Colors.Danger
-    statusDot.BackgroundColor3 = enabled and Colors.Success or Colors.Danger
-    Notify("Auto Parry", enabled and "Auto Parry Enabled ⚔" or "Auto Parry Disabled", 2, enabled and "success" or "warning")
-end)
+    local modeLabel = Instance.new("TextLabel"); modeLabel.BackgroundTransparency = 1
+    modeLabel.Size = UDim2.new(1,0,0,14); modeLabel.Position = UDim2.new(0,10,0,3)
+    modeLabel.Font = Enum.Font.Gotham; modeLabel.TextSize = IsMobile and 8 or 10
+    modeLabel.TextColor3 = Colors.TextDim; modeLabel.TextXAlignment = Enum.TextXAlignment.Left
+    modeLabel.Text = "MODE PRESET"; modeLabel.ZIndex = 14; modeLabel.Parent = f
 
-CreateToggle(parrySection, "Smart Timing (Speed Adaptive)", true, 3, function(enabled)
-    Config.SmartTiming = enabled
-end)
+    local btnContainer = Instance.new("Frame"); btnContainer.BackgroundTransparency = 1
+    btnContainer.Size = UDim2.new(1,-16,0, IsMobile and 24 or 28)
+    btnContainer.Position = UDim2.new(0,8,0, IsMobile and 18 or 20)
+    btnContainer.ZIndex = 14; btnContainer.Parent = f
+    local bcLayout = Instance.new("UIListLayout"); bcLayout.FillDirection = Enum.FillDirection.Horizontal
+    bcLayout.Padding = UDim.new(0,6); bcLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    bcLayout.Parent = btnContainer
 
-CreateToggle(parrySection, "Prediction System", true, 4, function(enabled)
-    Config.PredictionEnabled = enabled
-end)
+    local modeButtons = {}
+    local selectedIndicator = nil
 
-CreateSlider(parrySection, "Base Parry Distance", 10, 100, 55, 5, function(value)
-    Config.ParryDistance = value
-end)
+    for i, mode in ipairs(modes) do
+        local mBtn = Instance.new("TextButton"); mBtn.BackgroundColor3 = Config.Mode == mode.name and mode.color or Colors.Card
+        mBtn.BackgroundTransparency = Config.Mode == mode.name and 0.2 or 0
+        mBtn.Size = UDim2.new(0.32,-2,1,0); mBtn.Font = Enum.Font.GothamBold
+        mBtn.TextSize = IsMobile and 9 or 11
+        mBtn.TextColor3 = Config.Mode == mode.name and mode.color or Colors.TextDim
+        mBtn.Text = mode.icon.." "..mode.name; mBtn.LayoutOrder = i
+        mBtn.ZIndex = 15; mBtn.Parent = btnContainer
+        CreateCorner(mBtn, 6)
 
-CreateSlider(parrySection, "Speed Multiplier (×10)", 5, 20, 10, 6, function(value)
-    Config.SpeedMultiplier = value / 10
-end)
+        local mStroke = CreateStroke(mBtn, Config.Mode == mode.name and mode.color or Colors.Border, 1, Config.Mode == mode.name and 0.3 or 0.7)
 
--- Visual Section
-local visualSection = CreateSection("VISUALS & ESP", "👁", 3)
+        modeButtons[mode.name] = {btn = mBtn, stroke = mStroke, color = mode.color}
 
-CreateToggle(visualSection, "Visual Effects", true, 2, function(enabled)
-    Config.VisualEffects = enabled
-end)
+        mBtn.MouseButton1Click:Connect(function()
+            Ripple(mBtn, mode.color)
+            ApplyMode(mode.name)
 
-CreateToggle(visualSection, "Ball ESP Highlight", true, 3, function(enabled)
-    Config.ShowBallESP = enabled
-end)
+            -- Update all buttons
+            for mName, mData in pairs(modeButtons) do
+                local isSelected = mName == mode.name
+                Tween(mData.btn, {
+                    BackgroundColor3 = isSelected and mData.color or Colors.Card,
+                    BackgroundTransparency = isSelected and 0.2 or 0,
+                    TextColor3 = isSelected and mData.color or Colors.TextDim
+                }, 0.25)
+                Tween(mData.stroke, {
+                    Color = isSelected and mData.color or Colors.Border,
+                    Transparency = isSelected and 0.3 or 0.7
+                }, 0.25)
+            end
 
-CreateToggle(visualSection, "Distance Indicator", true, 4, function(enabled)
-    Config.ShowDistanceIndicator = enabled
-end)
+            Notify("Mode: "..mode.name, mode.desc, 2, mode.name == "Brutal" and "error" or (mode.name == "Santai" and "success" or "warning"))
+        end)
 
--- Settings Section
-local settingsSection = CreateSection("SETTINGS", "⚙", 4)
+        mBtn.MouseEnter:Connect(function()
+            if Config.Mode ~= mode.name then
+                Tween(mBtn, {BackgroundColor3 = Colors.CardHover}, 0.15)
+            end
+        end)
+        mBtn.MouseLeave:Connect(function()
+            if Config.Mode ~= mode.name then
+                Tween(mBtn, {BackgroundColor3 = Colors.Card}, 0.15)
+            end
+        end)
+    end
 
-CreateToggle(settingsSection, "Sound Effects", true, 2, function(enabled)
-    Config.SoundEffects = enabled
-end)
-
--- ═══════════════════════════════════════════
--- CREDITS SECTION
--- ═══════════════════════════════════════════
-local creditsCard = Instance.new("Frame")
-creditsCard.Name = "Credits"
-creditsCard.BackgroundColor3 = Colors.Card
-creditsCard.Size = UDim2.new(1, 0, 0, 60)
-creditsCard.LayoutOrder = 5
-creditsCard.ZIndex = 4
-creditsCard.Parent = ContentFrame
-CreateCorner(creditsCard, 12)
-CreateStroke(creditsCard, Colors.Primary, 1, 0.5)
-
-local creditsGradient = Instance.new("Frame")
-creditsGradient.BackgroundColor3 = Colors.Primary
-creditsGradient.BackgroundTransparency = 0.9
-creditsGradient.Size = UDim2.new(1, 0, 1, 0)
-creditsGradient.BorderSizePixel = 0
-creditsGradient.ZIndex = 4
-creditsGradient.Parent = creditsCard
-CreateCorner(creditsGradient, 12)
-CreateGradient(creditsGradient, Colors.Primary, Colors.Secondary, 45)
-
-local creditsText = Instance.new("TextLabel")
-creditsText.BackgroundTransparency = 1
-creditsText.Size = UDim2.new(1, 0, 0, 25)
-creditsText.Position = UDim2.new(0, 0, 0, 10)
-creditsText.Font = Enum.Font.GothamBold
-creditsText.TextSize = 14
-creditsText.TextColor3 = Colors.Text
-creditsText.Text = "★ SYN-STUDIO ★"
-creditsText.ZIndex = 6
-creditsText.Parent = creditsCard
-
-local creditsSubText = Instance.new("TextLabel")
-creditsSubText.BackgroundTransparency = 1
-creditsSubText.Size = UDim2.new(1, 0, 0, 15)
-creditsSubText.Position = UDim2.new(0, 0, 0, 35)
-creditsSubText.Font = Enum.Font.Gotham
-creditsSubText.TextSize = 10
-creditsSubText.TextColor3 = Colors.TextDim
-creditsSubText.Text = "Perfect Parry • Zero Miss • Made with ❤"
-creditsSubText.ZIndex = 6
-creditsSubText.Parent = creditsCard
+    return f
+end
 
 -- ═══════════════════════════════════════════
--- MINIMIZE / TOGGLE UI
+-- BUILD SECTIONS
+-- ═══════════════════════════════════════════
+local parrySec = CreateSection("AUTO PARRY", "⚔", 2)
+
+CreateModeSelector(parrySec, 2)
+
+CreateToggle(parrySec, "Enable Auto Parry", true, 3, function(on)
+    Config.AutoParry = on
+    statusLabel.Text = on and "ACTIVE" or "IDLE"
+    statusLabel.TextColor3 = on and Colors.Success or Colors.Danger
+    statusDot.BackgroundColor3 = on and Colors.Success or Colors.Danger
+    Notify("Auto Parry", on and "Enabled ⚔" or "Disabled", 2, on and "success" or "warning")
+end)
+
+CreateToggle(parrySec, "Smart Timing", true, 4, function(on) Config.SmartTiming = on end)
+CreateToggle(parrySec, "Prediction System", true, 5, function(on) Config.PredictionEnabled = on end)
+CreateSlider(parrySec, "Base Parry Distance", 10, 100, 55, 6, function(v) Config.ParryDistance = v end)
+CreateSlider(parrySec, "Speed Multiplier (×10)", 5, 20, 10, 7, function(v) Config.SpeedMultiplier = v/10 end)
+
+local visualSec = CreateSection("VISUALS & ESP", "👁", 3)
+CreateToggle(visualSec, "Visual Effects", true, 2, function(on) Config.VisualEffects = on end)
+CreateToggle(visualSec, "Ball ESP", true, 3, function(on) Config.ShowBallESP = on end)
+CreateToggle(visualSec, "Distance Indicator", true, 4, function(on) Config.ShowDistanceIndicator = on end)
+
+local settingSec = CreateSection("SETTINGS", "⚙", 4)
+CreateToggle(settingSec, "Sound Effects", true, 2, function(on) Config.SoundEffects = on end)
+
+-- Credits
+local creditsCard = Instance.new("Frame"); creditsCard.BackgroundColor3 = Colors.Card
+creditsCard.Size = UDim2.new(1,0,0, IsMobile and 50 or 60); creditsCard.LayoutOrder = 5
+creditsCard.ZIndex = 12; creditsCard.Parent = ContentFrame
+CreateCorner(creditsCard, 12); CreateStroke(creditsCard, Colors.Primary, 1, 0.5)
+
+local creditsGrad = Instance.new("Frame"); creditsGrad.BackgroundColor3 = Colors.Primary
+creditsGrad.BackgroundTransparency = 0.9; creditsGrad.Size = UDim2.new(1,0,1,0)
+creditsGrad.BorderSizePixel = 0; creditsGrad.ZIndex = 12; creditsGrad.Parent = creditsCard
+CreateCorner(creditsGrad, 12); CreateGradient(creditsGrad, Colors.Primary, Colors.Secondary, 45)
+
+local creditsT = Instance.new("TextLabel"); creditsT.BackgroundTransparency = 1
+creditsT.Size = UDim2.new(1,0,0,20); creditsT.Position = UDim2.new(0,0,0,IsMobile and 6 or 10)
+creditsT.Font = Enum.Font.GothamBold; creditsT.TextSize = IsMobile and 12 or 14
+creditsT.TextColor3 = Colors.Text; creditsT.Text = "★ SYN-STUDIO ★"
+creditsT.ZIndex = 14; creditsT.Parent = creditsCard
+
+local creditsSub = Instance.new("TextLabel"); creditsSub.BackgroundTransparency = 1
+creditsSub.Size = UDim2.new(1,0,0,12); creditsSub.Position = UDim2.new(0,0,0,IsMobile and 26 or 32)
+creditsSub.Font = Enum.Font.Gotham; creditsSub.TextSize = IsMobile and 8 or 10
+creditsSub.TextColor3 = Colors.TextDim; creditsSub.Text = "Perfect Parry • Zero Miss • Made with ❤"
+creditsSub.ZIndex = 14; creditsSub.Parent = creditsCard
+
+-- ═══════════════════════════════════════════
+-- MINIMIZE ↔ FLOAT ICON
 -- ═══════════════════════════════════════════
 local isMinimized = false
-local originalSize = MainFrame.Size
 
-minimizeBtn.MouseButton1Click:Connect(function()
-    isMinimized = not isMinimized
-    if isMinimized then
-        Tween(MainFrame, {Size = UDim2.new(0, 480, 0, 55)}, 0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In)
-        minimizeBtn.Text = "+"
-        ContentFrame.Visible = false
-    else
-        ContentFrame.Visible = true
-        Tween(MainFrame, {Size = originalSize}, 0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-        minimizeBtn.Text = "−"
-    end
+minBtn.MouseButton1Click:Connect(function()
+    isMinimized = true
+    Tween(MainFrame, {Size = UDim2.new(0,0,0,0), BackgroundTransparency = 1}, 0.35, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+    task.delay(0.35, function()
+        MainFrame.Visible = false
+        FloatIcon.Visible = true
+        FloatIcon.Size = UDim2.new(0,0,0,0); FloatIcon.BackgroundTransparency = 0.5
+        Tween(FloatIcon, {
+            Size = UDim2.new(0, IsMobile and 50 or 48, 0, IsMobile and 50 or 48),
+            BackgroundTransparency = 0
+        }, 0.4, Enum.EasingStyle.Back)
+    end)
 end)
 
--- Toggle with keybind
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
+FloatIcon.MouseButton1Click:Connect(function()
+    if floatDrag then return end
+    isMinimized = false
+    Tween(FloatIcon, {Size = UDim2.new(0,0,0,0), BackgroundTransparency = 0.5}, 0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+    task.delay(0.25, function()
+        FloatIcon.Visible = false
+        MainFrame.Visible = true
+        local nw, nh = CalcWindowSize()
+        MainFrame.Size = UDim2.new(0,0,0,0); MainFrame.BackgroundTransparency = 0.5
+        Tween(MainFrame, {
+            Size = UDim2.new(0,nw,0,nh),
+            BackgroundTransparency = 0
+        }, 0.4, Enum.EasingStyle.Back)
+    end)
+end)
+
+-- Keybind toggle
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
     if input.KeyCode == Enum.KeyCode.RightShift then
-        MainFrame.Visible = not MainFrame.Visible
-        Notify("SYN-STUDIO", MainFrame.Visible and "UI Shown" or "UI Hidden (Press RShift)", 1.5, "success")
+        if isMinimized then
+            FloatIcon.Visible = not FloatIcon.Visible
+        else
+            MainFrame.Visible = not MainFrame.Visible
+        end
+        Notify("SYN-STUDIO", MainFrame.Visible and "UI Shown" or "UI Hidden (RShift)", 1.5, "success")
     end
 end)
 
 -- ═══════════════════════════════════════════
--- BALL ESP INDICATOR
+-- BALL ESP
 -- ═══════════════════════════════════════════
 local espBillboard = nil
 
 local function CreateBallESP(ball)
     if espBillboard then espBillboard:Destroy() end
+    local bb = Instance.new("BillboardGui"); bb.Name = "SynESP"
+    bb.Size = UDim2.new(0,110,0,44); bb.StudsOffset = Vector3.new(0,3,0)
+    bb.AlwaysOnTop = true; bb.Adornee = ball; bb.Parent = ball
 
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = "SynESP"
-    billboard.Size = UDim2.new(0, 120, 0, 50)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.AlwaysOnTop = true
-    billboard.Adornee = ball
-    billboard.Parent = ball
+    local ef = Instance.new("Frame"); ef.Name = "Frame"
+    ef.BackgroundColor3 = Colors.Background; ef.BackgroundTransparency = 0.2
+    ef.Size = UDim2.new(1,0,1,0); ef.Parent = bb
+    CreateCorner(ef, 8); CreateStroke(ef, Colors.Danger, 1.5, 0.3)
 
-    local espFrame = Instance.new("Frame")
-    espFrame.Name = "Frame" -- FIX: Ditambahkan eksplisit agar heartbeat loop dapat menemukannya
-    espFrame.BackgroundColor3 = Colors.Background
-    espFrame.BackgroundTransparency = 0.2
-    espFrame.Size = UDim2.new(1, 0, 1, 0)
-    espFrame.Parent = billboard
-    CreateCorner(espFrame, 8)
-    CreateStroke(espFrame, Colors.Danger, 1.5, 0.3)
+    local et = Instance.new("TextLabel"); et.Name = "DistText"; et.BackgroundTransparency = 1
+    et.Size = UDim2.new(1,0,0.5,0); et.Font = Enum.Font.GothamBold; et.TextSize = 11
+    et.TextColor3 = Colors.Danger; et.Text = "⚠ BALL"; et.Parent = ef
 
-    local espText = Instance.new("TextLabel")
-    espText.Name = "DistText"
-    espText.BackgroundTransparency = 1
-    espText.Size = UDim2.new(1, 0, 0.5, 0)
-    espText.Font = Enum.Font.GothamBold
-    espText.TextSize = 12
-    espText.TextColor3 = Colors.Danger
-    espText.Text = "⚠ BALL"
-    espText.Parent = espFrame
+    local dt = Instance.new("TextLabel"); dt.Name = "Distance"; dt.BackgroundTransparency = 1
+    dt.Size = UDim2.new(1,0,0.5,0); dt.Position = UDim2.new(0,0,0.5,0)
+    dt.Font = Enum.Font.Gotham; dt.TextSize = 9; dt.TextColor3 = Colors.Text
+    dt.Text = "0 studs"; dt.Parent = ef
 
-    local distText = Instance.new("TextLabel")
-    distText.Name = "Distance"
-    distText.BackgroundTransparency = 1
-    distText.Size = UDim2.new(1, 0, 0.5, 0)
-    distText.Position = UDim2.new(0, 0, 0.5, 0)
-    distText.Font = Enum.Font.Gotham
-    distText.TextSize = 10
-    distText.TextColor3 = Colors.Text
-    distText.Text = "0 studs"
-    distText.Parent = espFrame
-
-    espBillboard = billboard
-    return billboard
+    espBillboard = bb; return bb
 end
 
 -- ═══════════════════════════════════════════
--- PARRY VISUAL EFFECT
+-- PARRY EFFECT
 -- ═══════════════════════════════════════════
 local function ParryEffect()
     if not Config.VisualEffects then return end
+    local char = LocalPlayer.Character; if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
 
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    -- Screen flash
-    local flash = Instance.new("Frame")
-    flash.BackgroundColor3 = Colors.Primary
-    flash.BackgroundTransparency = 0.7
-    flash.Size = UDim2.new(1, 0, 1, 0)
-    flash.ZIndex = 100
+    local flash = Instance.new("Frame"); flash.BackgroundColor3 = Colors.Primary
+    flash.BackgroundTransparency = 0.7; flash.Size = UDim2.new(1,0,1,0); flash.ZIndex = 100
     flash.Parent = ScreenGui
     Tween(flash, {BackgroundTransparency = 1}, 0.4)
     task.delay(0.4, function() flash:Destroy() end)
 
-    -- 3D ring effect
-    local part = Instance.new("Part")
-    part.Shape = Enum.PartType.Ball
-    part.Material = Enum.Material.Neon
-    part.Color = Colors.Primary
-    part.Size = Vector3.new(1, 1, 1)
-    part.Position = hrp.Position
-    part.Anchored = true
-    part.CanCollide = false
-    part.Transparency = 0.3
-    part.Parent = Workspace
-
-    Tween(part, {Size = Vector3.new(20, 20, 20), Transparency = 1}, 0.5)
-    task.delay(0.5, function() part:Destroy() end)
+    local p = Instance.new("Part"); p.Shape = Enum.PartType.Ball; p.Material = Enum.Material.Neon
+    p.Color = Colors.Primary; p.Size = Vector3.new(1,1,1); p.Position = hrp.Position
+    p.Anchored = true; p.CanCollide = false; p.Transparency = 0.3; p.Parent = Workspace
+    Tween(p, {Size = Vector3.new(20,20,20), Transparency = 1}, 0.5)
+    task.delay(0.5, function() p:Destroy() end)
 end
 
 -- ═══════════════════════════════════════════
@@ -1058,372 +922,206 @@ local currentBallSpeed = 0
 local parryDebounce = false
 
 local function FindBall()
-    -- Search multiple possible ball locations
-    for _, obj in ipairs(Workspace:GetChildren()) do
-        if obj:IsA("BasePart") then
-            local name = obj.Name:lower()
-            if name == "ball" or name == "bladeball" or name == "blade_ball" then
-                return obj
-            end
+    for _, o in ipairs(Workspace:GetChildren()) do
+        if o:IsA("BasePart") then
+            local n = o.Name:lower()
+            if n == "ball" or n == "bladeball" or n == "blade_ball" then return o end
         end
     end
-
-    -- Also check specific folders
-    local ballsFolder = Workspace:FindFirstChild("Balls") or Workspace:FindFirstChild("GameObjects")
-    if ballsFolder then
-        for _, child in ipairs(ballsFolder:GetChildren()) do
-            if child:IsA("BasePart") or child:IsA("Model") then
-                if child:IsA("Model") then
-                    return child:FindFirstChildWhichIsA("BasePart")
-                end
-                return child
-            end
+    local bf = Workspace:FindFirstChild("Balls") or Workspace:FindFirstChild("GameObjects")
+    if bf then
+        for _, c in ipairs(bf:GetChildren()) do
+            if c:IsA("BasePart") then return c end
+            if c:IsA("Model") then return c:FindFirstChildWhichIsA("BasePart") end
         end
     end
-
     return nil
 end
 
 local function IsTargeted()
-    local char = LocalPlayer.Character
-    if not char then return false end
-
-    -- Check for red outline/highlight (targeted by color threshold to ensure maximum safety and consistency)
+    local char = LocalPlayer.Character; if not char then return false end
     for _, v in ipairs(char:GetDescendants()) do
         if v:IsA("Highlight") then
-            local color = v.OutlineColor
-            if color.R > 0.8 and color.G < 0.2 and color.B < 0.2 then
-                return true
-            end
+            local c = v.OutlineColor
+            if c.R > 0.8 and c.G < 0.2 and c.B < 0.2 then return true end
         end
         if v:IsA("SelectionBox") or v:IsA("SelectionSphere") then
-            local color = v.Color3
-            if color.R > 0.8 and color.G < 0.2 and color.B < 0.2 then
-                return true
-            end
+            local c = v.Color3
+            if c.R > 0.8 and c.G < 0.2 and c.B < 0.2 then return true end
         end
     end
-
     return false
 end
 
-local function IsBallApproaching(ball)
-    local char = LocalPlayer.Character
-    if not char then return false, 0, 0 end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false, 0, 0 end
-
-    local ballPos = ball.Position
-    local playerPos = hrp.Position
-    local distance = (ballPos - playerPos).Magnitude
-
-    -- Calculate ball velocity/speed
-    local velocity = ball.Velocity
-    if velocity then
-        currentBallSpeed = velocity.Magnitude
-    end
-
-    -- Check if ball is moving toward player
-    local direction = (playerPos - ballPos).Unit
-    local ballDir = velocity and velocity.Unit or Vector3.new(0,0,0)
-    local dot = direction:Dot(ballDir)
-
-    -- Ball is approaching if dot product > 0.3 (moving toward us)
-    local isApproaching = dot > 0.3 or distance < 30
-
-    return isApproaching, distance, currentBallSpeed
-end
-
-local function CalculateParryDistance(speed, distance)
-    local baseDistance = Config.ParryDistance
-    local speedFactor = math.clamp(speed / 100, 0.5, 3.0)
-
-    -- Adaptive timing
-    local adaptiveDistance = baseDistance * speedFactor * Config.SpeedMultiplier
-
-    -- Clamp to reasonable range
-    adaptiveDistance = math.clamp(adaptiveDistance, Config.MinParryDistance, Config.MaxParryDistance)
-
-    return adaptiveDistance
+local function CalculateParryDistance(speed)
+    local base = Config.ParryDistance
+    local factor = math.clamp(speed / 100, 0.5, 3.0)
+    local dist = base * factor * Config.SpeedMultiplier
+    return math.clamp(dist, Config.MinParryDistance, Config.MaxParryDistance)
 end
 
 local function TriggerParry()
     if parryDebounce then return end
     parryDebounce = true
 
-    -- Method 1: Fire remote event for parry
-    local parryRemote = ReplicatedStorage:FindFirstChild("Remotes")
-    if parryRemote then
-        local parryEvent = parryRemote:FindFirstChild("Parry")
-            or parryRemote:FindFirstChild("ParryBall")
-            or parryRemote:FindFirstChild("AttemptParry")
-            or parryRemote:FindFirstChild("Block")
-
-        if parryEvent then
-            if parryEvent:IsA("RemoteEvent") then
-                parryEvent:FireServer()
-            elseif parryEvent:IsA("RemoteFunction") then
-                pcall(function()
-                    parryEvent:InvokeServer()
-                end)
-            end
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if remotes then
+        local pe = remotes:FindFirstChild("Parry") or remotes:FindFirstChild("ParryBall") or remotes:FindFirstChild("AttemptParry") or remotes:FindFirstChild("Block")
+        if pe then
+            if pe:IsA("RemoteEvent") then pe:FireServer()
+            elseif pe:IsA("RemoteFunction") then pcall(function() pe:InvokeServer() end) end
         end
     end
 
-    -- Method 2: Search all remotes for parry-related ones
-    for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
-        local name = remote.Name:lower()
-        if (name:find("parry") or name:find("block") or name:find("deflect") or name:find("hit")) then
-            if remote:IsA("RemoteEvent") then
-                pcall(function()
-                    remote:FireServer()
-                end)
-            elseif remote:IsA("RemoteFunction") then
-                pcall(function()
-                    remote:InvokeServer()
-                end)
-            end
+    for _, r in ipairs(ReplicatedStorage:GetDescendants()) do
+        local n = r.Name:lower()
+        if n:find("parry") or n:find("block") or n:find("deflect") or n:find("hit") then
+            if r:IsA("RemoteEvent") then pcall(function() r:FireServer() end)
+            elseif r:IsA("RemoteFunction") then pcall(function() r:InvokeServer() end) end
         end
     end
 
-    -- Method 3: Simulate click/parry input
     pcall(function()
         local VIM = game:GetService("VirtualInputManager")
-        VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+        VIM:SendMouseButtonEvent(0,0,0,true,game,0)
         task.wait(0.01)
-        VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+        VIM:SendMouseButtonEvent(0,0,0,false,game,0)
     end)
 
-    -- Method 4: Fire click detector if exists on tool (Sword parry support)
     pcall(function()
         local char = LocalPlayer.Character
-        if char then
-            local tool = char:FindFirstChildWhichIsA("Tool")
-            if tool then
-                tool:Activate()
-            end
-        end
+        if char then local tool = char:FindFirstChildWhichIsA("Tool"); if tool then tool:Activate() end end
     end)
 
-    -- Update stats
-    Config.ParrySuccessCount = Config.ParrySuccessCount + 1
-    Config.TotalParryAttempts = Config.TotalParryAttempts + 1
-
-    -- Visual feedback
+    Config.ParrySuccessCount += 1
+    Config.TotalParryAttempts += 1
     ParryEffect()
 
-    -- Sound effect
     if Config.SoundEffects then
         pcall(function()
-            local sound = Instance.new("Sound")
-            sound.SoundId = "rbxassetid://12221984"
-            sound.Volume = 0.3
-            sound.PlayOnRemove = true
-            sound.Parent = Workspace
-            sound:Destroy()
+            local s = Instance.new("Sound"); s.SoundId = "rbxassetid://12221984"
+            s.Volume = 0.3; s.PlayOnRemove = true; s.Parent = Workspace; s:Destroy()
         end)
     end
 
     lastParryTick = tick()
-
-    task.delay(0.15, function()
-        parryDebounce = false
-    end)
+    task.delay(0.15, function() parryDebounce = false end)
 end
 
 -- ═══════════════════════════════════════════
--- MAIN LOOP
+-- MAIN HEARTBEAT LOOP
 -- ═══════════════════════════════════════════
-local ballTracker = {
-    lastPosition = nil,
-    lastTime = nil,
-    calculatedSpeed = 0,
-}
+local ballTracker = {lastPosition = nil, lastTime = nil, calculatedSpeed = 0}
 
 RunService.Heartbeat:Connect(function()
     if not Config.AutoParry then return end
+    local char = LocalPlayer.Character; if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
+    local hum = char:FindFirstChild("Humanoid"); if not hum or hum.Health <= 0 then return end
 
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    local humanoid = char:FindFirstChild("Humanoid")
-    if not humanoid or humanoid.Health <= 0 then return end
+    local ball = FindBall(); if not ball then return end
 
-    -- Find the ball
-    local ball = FindBall()
-    if not ball then return end
-
-    -- Calculate speed manually if Velocity is zero
-    local ballPos = ball.Position
-    local now = tick()
-
+    local ballPos = ball.Position; local now = tick()
     if ballTracker.lastPosition and ballTracker.lastTime then
         local dt = now - ballTracker.lastTime
-        if dt > 0 then
-            local dist = (ballPos - ballTracker.lastPosition).Magnitude
-            ballTracker.calculatedSpeed = dist / dt
-        end
+        if dt > 0 then ballTracker.calculatedSpeed = (ballPos - ballTracker.lastPosition).Magnitude / dt end
     end
-    ballTracker.lastPosition = ballPos
-    ballTracker.lastTime = now
+    ballTracker.lastPosition = ballPos; ballTracker.lastTime = now
 
-    -- Use calculated speed or velocity
     local speed = ball.Velocity and ball.Velocity.Magnitude or 0
-    if speed < 1 then
-        speed = ballTracker.calculatedSpeed
-    end
+    if speed < 1 then speed = ballTracker.calculatedSpeed end
     currentBallSpeed = speed
 
-    -- Distance to player
     local distance = (ballPos - hrp.Position).Magnitude
 
-    -- Check if ball is approaching
-    local direction = (hrp.Position - ballPos)
-    local dirNorm = direction.Unit
-    local ballVel = ball.Velocity or (ballTracker.lastPosition and (ballPos - ballTracker.lastPosition) * 60 or Vector3.new(0,0,0))
-    local ballVelNorm = ballVel.Magnitude > 0.1 and ballVel.Unit or Vector3.new(0,0,0)
-    local dotProduct = dirNorm:Dot(ballVelNorm)
+    local dir = (hrp.Position - ballPos)
+    local dirN = dir.Magnitude > 0.1 and dir.Unit or Vector3.zero
+    local ballVel = ball.Velocity or Vector3.zero
+    if ballVel.Magnitude < 0.1 and ballTracker.lastPosition then
+        ballVel = (ballPos - ballTracker.lastPosition) * 60
+    end
+    local bvN = ballVel.Magnitude > 0.1 and ballVel.Unit or Vector3.zero
+    local dot = dirN:Dot(bvN)
 
-    local isApproaching = dotProduct > 0.2 or (distance < 25 and speed > 5)
+    local isApproaching = dot > 0.2 or (distance < 25 and speed > 5)
     local isTargeted = IsTargeted()
 
-    -- Ball ESP
+    -- ESP
     if Config.ShowBallESP then
-        if not espBillboard or espBillboard.Parent ~= ball then
-            CreateBallESP(ball)
-        end
+        if not espBillboard or espBillboard.Parent ~= ball then CreateBallESP(ball) end
         if espBillboard then
-            local distLabel = espBillboard:FindFirstChild("Frame")
-            if distLabel then
-                local d = distLabel:FindFirstChild("Distance")
-                if d then
-                    d.Text = string.format("%.0f studs | %.0f spd", distance, speed)
-                end
-                local t = distLabel:FindFirstChild("DistText")
+            local frm = espBillboard:FindFirstChild("Frame")
+            if frm then
+                local d = frm:FindFirstChild("Distance")
+                if d then d.Text = string.format("%.0f studs | %.0f spd", distance, speed) end
+                local t = frm:FindFirstChild("DistText")
                 if t then
-                    if isApproaching and distance < 100 then
-                        t.Text = "⚠ INCOMING!"
-                        t.TextColor3 = Colors.Danger
-                    else
-                        t.Text = "● BALL"
-                        t.TextColor3 = Colors.Primary
-                    end
+                    if isApproaching and distance < 100 then t.Text = "⚠ INCOMING!"; t.TextColor3 = Colors.Danger
+                    else t.Text = "● BALL"; t.TextColor3 = Colors.Primary end
                 end
             end
         end
     end
 
-    -- Update UI stats
+    -- Update stats
     pcall(function()
         ballSpeedLabel.Text = string.format("%.0f", speed)
         if Config.TotalParryAttempts > 0 then
-            local rate = (Config.ParrySuccessCount / Config.TotalParryAttempts) * 100
-            successRateLabel.Text = string.format("%.0f%%", rate)
+            successRateLabel.Text = string.format("%.0f%%", (Config.ParrySuccessCount / Config.TotalParryAttempts) * 100)
         end
         parryCountLabel.Text = tostring(Config.ParrySuccessCount)
     end)
 
-    -- ═══════════════════════════════════════
-    -- PARRY DECISION ENGINE
-    -- ═══════════════════════════════════════
-
+    -- Decision
     if not isApproaching and not isTargeted then return end
-    if tick() - lastParryTick < 0.15 then return end -- Cooldown
+    if tick() - lastParryTick < 0.15 then return end
 
-    -- Calculate optimal parry distance
-    local optimalDistance = CalculateParryDistance(speed, distance)
-
-    -- Prediction: estimate time to reach player
-    local timeToReach = speed > 0.1 and (distance / speed) or 999
-
-    -- Smart timing based on speed
+    local optDist = CalculateParryDistance(speed)
+    local ttr = speed > 0.1 and (distance / speed) or 999
     local shouldParry = false
 
     if Config.SmartTiming then
-        -- For very fast balls (speed > 200), parry at larger distance
-        if speed > 200 and distance < optimalDistance * 1.5 and isApproaching then
-            shouldParry = true
-        -- For fast balls (speed > 100)
-        elseif speed > 100 and distance < optimalDistance * 1.2 and isApproaching then
-            shouldParry = true
-        -- Normal speed
-        elseif distance < optimalDistance and isApproaching then
-            shouldParry = true
-        -- Very close - emergency parry
-        elseif distance < Config.MinParryDistance then
-            shouldParry = true
-        -- Targeted and close
-        elseif isTargeted and distance < optimalDistance * 1.3 then
-            shouldParry = true
-        end
+        if speed > 200 and distance < optDist * 1.5 and isApproaching then shouldParry = true
+        elseif speed > 100 and distance < optDist * 1.2 and isApproaching then shouldParry = true
+        elseif distance < optDist and isApproaching then shouldParry = true
+        elseif distance < Config.MinParryDistance then shouldParry = true
+        elseif isTargeted and distance < optDist * 1.3 then shouldParry = true end
 
-        -- Time-based prediction
-        if Config.PredictionEnabled and timeToReach < 0.25 and timeToReach > 0.02 then
-            shouldParry = true
-        end
+        if Config.PredictionEnabled and ttr < 0.25 and ttr > 0.02 then shouldParry = true end
     else
-        -- Simple mode: just use distance
-        if distance < Config.ParryDistance and isApproaching then
-            shouldParry = true
-        end
+        if distance < Config.ParryDistance and isApproaching then shouldParry = true end
     end
 
-    -- EXECUTE PARRY
     if shouldParry then
-        -- Add slight delay for very fast balls to be frame-perfect
-        if speed > 150 then
-            TriggerParry()
+        if speed > 150 then TriggerParry()
         else
-            -- Small delay for slower balls to maximize timing
-            local delayTime = math.clamp(timeToReach * 0.3, 0, 0.1)
-            task.delay(delayTime, function()
-                TriggerParry()
-            end)
+            local d = math.clamp(ttr * 0.3, 0, 0.1)
+            task.delay(d, function() TriggerParry() end)
         end
     end
 end)
 
 -- ═══════════════════════════════════════════
--- SECONDARY PARRY DETECTION (Backup)
+-- BACKUP TARGET DETECTION
 -- ═══════════════════════════════════════════
-
--- Listen for ball attribute changes or value objects
 task.spawn(function()
     while ScreenGui.Parent do
         pcall(function()
-            local ball = FindBall()
-            if ball then
-                -- Check for target attribute
-                local target = ball:GetAttribute("Target")
-                    or ball:GetAttribute("target")
-                    or ball:GetAttribute("CurrentTarget")
-
-                if target and (target == LocalPlayer.Name or target == LocalPlayer.UserId) then
-                    -- We are targeted!
-                    local char = LocalPlayer.Character
-                    if char then
-                        local hrp = char:FindFirstChild("HumanoidRootPart")
-                        if hrp then
-                            local dist = (ball.Position - hrp.Position).Magnitude
-                            if dist < Config.ParryDistance * 1.5 then
-                                TriggerParry()
-                            end
-                        end
-                    end
-                end
-
-                -- Check value objects inside ball
-                for _, child in ipairs(ball:GetChildren()) do
-                    if child:IsA("ObjectValue") and child.Name:lower():find("target") then
-                        if child.Value == LocalPlayer.Character or child.Value == LocalPlayer then
-                            local hrpCheck = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                            if hrpCheck then
-                                local d = (ball.Position - hrpCheck.Position).Magnitude
-                                if d < Config.ParryDistance * 1.5 then
-                                    TriggerParry()
-                                end
-                            end
+            local ball = FindBall(); if not ball then return end
+            local t = ball:GetAttribute("Target") or ball:GetAttribute("target") or ball:GetAttribute("CurrentTarget")
+            if t and (t == LocalPlayer.Name or t == LocalPlayer.UserId) then
+                local char = LocalPlayer.Character; if not char then return end
+                local hrp = char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
+                local d = (ball.Position - hrp.Position).Magnitude
+                if d < Config.ParryDistance * 1.5 then TriggerParry() end
+            end
+            for _, ch in ipairs(ball:GetChildren()) do
+                if ch:IsA("ObjectValue") and ch.Name:lower():find("target") then
+                    if ch.Value == LocalPlayer.Character or ch.Value == LocalPlayer then
+                        local hrpC = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                        if hrpC then
+                            local dd = (ball.Position - hrpC.Position).Magnitude
+                            if dd < Config.ParryDistance * 1.5 then TriggerParry() end
                         end
                     end
                 end
@@ -1434,56 +1132,48 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════
--- REMOTE SPY - Auto detect parry remote
+-- REMOTE DETECTION
 -- ═══════════════════════════════════════════
 task.spawn(function()
     task.wait(2)
-    local parryFound = false
-    for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
-        local name = remote.Name:lower()
-        if name:find("parry") or name:find("deflect") or name:find("block") then
-            parryFound = true
-            break
-        end
+    local found = false
+    for _, r in ipairs(ReplicatedStorage:GetDescendants()) do
+        local n = r.Name:lower()
+        if n:find("parry") or n:find("deflect") or n:find("block") then found = true; break end
     end
-    if parryFound then
-        Notify("Remote Found", "Parry remote detected successfully!", 3, "success")
-    else
-        Notify("Info", "Using universal parry method", 3, "warning")
-    end
+    Notify(found and "Remote Found" or "Info",
+           found and "Parry remote detected!" or "Using universal parry method",
+           3, found and "success" or "warning")
 end)
 
 -- ═══════════════════════════════════════════
 -- INTRO ANIMATION
 -- ═══════════════════════════════════════════
 MainFrame.BackgroundTransparency = 1
-MainFrame.Size = UDim2.new(0, 480, 0, 0)
+MainFrame.Size = UDim2.new(0,0,0,0)
 
 task.delay(0.5, function()
-    Tween(MainFrame, {
-        Size = UDim2.new(0, 480, 0, 560),
-        BackgroundTransparency = 0
-    }, 0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-
+    local nw, nh = CalcWindowSize()
+    Tween(MainFrame, {Size = UDim2.new(0,nw,0,nh), BackgroundTransparency = 0}, 0.6, Enum.EasingStyle.Back)
     task.delay(0.8, function()
-        Notify("SYN-STUDIO", "Auto Parry loaded successfully! ⚔", 3, "success")
+        Notify("SYN-STUDIO", "Auto Parry loaded! ⚔", 3, "success")
         task.delay(1, function()
-            Notify("Keybind", "Press RightShift to toggle UI", 3, "warning")
+            Notify("Keybind", "RightShift = Toggle UI", 3, "warning")
+            task.delay(1, function()
+                Notify("Mode", "Current: "..Config.Mode, 2, "success")
+            end)
         end)
     end)
 end)
 
 print([[
 ╔══════════════════════════════════════════╗
-║         SYN-STUDIO v2.0 Loaded!         ║
-║      Blade Ball Auto Parry Active       ║
+║       SYN-STUDIO v2.1 Loaded!           ║
+║    Blade Ball Auto Parry Active         ║
 ║                                          ║
-║  Keybind: RightShift = Toggle UI        ║
-║  Features:                               ║
-║  • Smart Speed-Adaptive Parry           ║
-║  • Prediction System                     ║
-║  • Ball ESP & Distance Tracker          ║
-║  • Visual Effects                        ║
-║  • Zero Miss Technology                  ║
+║  Toggle: RightShift                      ║
+║  Modes: Brutal | Normal | Santai        ║
+║  Responsive: Mobile + Desktop           ║
+║  Float Icon: Minimize to icon           ║
 ╚══════════════════════════════════════════╝
 ]])
