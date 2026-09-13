@@ -1,1758 +1,1415 @@
 --[[
-    SYN-STUDIO v4.0
-    Egg Stealer - Stealth Edition
-    Clean UI / Fast Movement / Smart Targeting
+    SYN-STUDIO v5.0
+    Complete Rewrite - Optimized & Working
 ]]
 
--- ============================================================
--- RANDOMIZE NAMES (Anti-Detect)
--- ============================================================
-local function rid(n)
-    local s = ""
-    for i = 1, (n or 14) do
-        local r = math.random(1, 52)
-        local c = r <= 26 and string.char(64 + r) or string.char(70 + r)
-        s = s .. c
-    end
+-- Anti-detect naming
+local function rn(l)
+    local s,c = "","qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM"
+    for i=1,(l or 12) do local r=math.random(1,#c) s=s..c:sub(r,r) end
     return s
 end
+local _ID,_UI = rn(14),rn(18)
 
-local _ID = rid(16)
-local _GN = rid(20)
-
--- ============================================================
--- SERVICES
--- ============================================================
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local CoreGui = game:GetService("CoreGui")
-local StarterGui = game:GetService("StarterGui")
-
+local RS = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local TS = game:GetService("TweenService")
+local WS = game:GetService("Workspace")
+local RepS = game:GetService("ReplicatedStorage")
+local CG = game:GetService("CoreGui")
+local SG = game:GetService("StarterGui")
 local LP = Players.LocalPlayer
-local Camera = Workspace.CurrentCamera
 
--- ============================================================
+-- =============================================
 -- CONFIG
--- ============================================================
-local CFG = {
-    Rarity = {
-        Ethernal  = { On = true,  Priority = 1,  Color = Color3.fromRGB(220, 50, 255) },
-        Devine    = { On = true,  Priority = 2,  Color = Color3.fromRGB(255, 200, 30) },
-        Cosmic    = { On = true,  Priority = 3,  Color = Color3.fromRGB(30, 220, 255) },
-        Secret    = { On = true,  Priority = 4,  Color = Color3.fromRGB(230, 30, 30) },
-        Legend    = { On = true,  Priority = 5,  Color = Color3.fromRGB(255, 150, 20) },
-        Mistic    = { On = true,  Priority = 6,  Color = Color3.fromRGB(140, 20, 200) },
-        Rare      = { On = false, Priority = 7,  Color = Color3.fromRGB(30, 100, 255) },
-        Epic      = { On = false, Priority = 8,  Color = Color3.fromRGB(150, 50, 220) },
-        Uncommon  = { On = false, Priority = 9,  Color = Color3.fromRGB(50, 200, 50) },
-        Common    = { On = false, Priority = 10, Color = Color3.fromRGB(160, 160, 160) },
+-- =============================================
+local Config = {
+    RarityList = {"Ethernal","Devine","Cosmic","Secret","Legend","Mistic","Rare","Epic","Uncommon","Common"},
+    RarityEnabled = {
+        Ethernal=true, Devine=true, Cosmic=true, Secret=true, Legend=true,
+        Mistic=true, Rare=false, Epic=false, Uncommon=false, Common=false,
     },
-    RarityOrder = {
-        "Ethernal", "Devine", "Cosmic", "Secret",
-        "Legend", "Mistic", "Rare", "Epic",
-        "Uncommon", "Common"
+    RarityPri = {
+        Ethernal=1,Devine=2,Cosmic=3,Secret=4,Legend=5,
+        Mistic=6,Rare=7,Epic=8,Uncommon=9,Common=10,
     },
-
-    -- Movement
-    MoveSpeed       = 180,
-    EscSpeed        = 240,
-    BaseSpeed       = 16,
-    Acceleration    = 8,
-
-    -- Big Egg
-    BigKG           = 1000,
-    BigPriority     = true,
-
-    -- Range
-    ScanRange       = 5000,
-    GrabDist        = 10,
-    SafeDist        = 20,
-
-    -- Timing
-    GrabDelay       = 0.02,
-    ScanRate        = 0.12,
-
-    -- Toggles
-    Active          = false,
-    InstantSteal    = true,
-    AutoEscape      = true,
-    AntiDrop        = true,
-    ESP             = true,
-    Stealth         = true,
-
-    SafePos         = nil,
+    RarityCol = {
+        Ethernal=Color3.fromRGB(255,60,255), Devine=Color3.fromRGB(255,210,40),
+        Cosmic=Color3.fromRGB(40,230,255), Secret=Color3.fromRGB(240,40,40),
+        Legend=Color3.fromRGB(255,160,30), Mistic=Color3.fromRGB(150,30,210),
+        Rare=Color3.fromRGB(40,110,255), Epic=Color3.fromRGB(160,60,230),
+        Uncommon=Color3.fromRGB(60,210,60), Common=Color3.fromRGB(170,170,170),
+    },
+    Speed = 160,
+    EscSpeed = 220,
+    BigKG = 1000,
+    BigMode = true,
+    GrabDist = 15,
+    SafeDist = 25,
+    Active = false,
+    AutoEsc = true,
+    AntiDrop = true,
+    ShowESP = true,
+    SafePos = nil,
 }
 
--- ============================================================
+-- =============================================
 -- STATE
--- ============================================================
-local STATE = {
-    Grabbing    = false,
-    Escaping    = false,
-    Carrying    = false,
-    HasEgg      = false,
-    Target      = nil,
-    TargetRar   = nil,
-    TargetKG    = 0,
-    Conns       = {},
-    EspList     = {},
-    Mover       = nil,
+-- =============================================
+local State = {
+    Moving = false,
+    Escaping = false,
+    HasEgg = false,
+    Target = nil,
+    TargetRar = nil,
+    TargetKG = 0,
+    Conns = {},
+    Esps = {},
+    MainConn = nil,
+    EspConn = nil,
+    MoveConn = nil,
 }
 
--- ============================================================
--- CORE UTILS
--- ============================================================
-local function GetChar()
-    return LP.Character or LP.CharacterAdded:Wait()
-end
-
+-- =============================================
+-- UTILS (lightweight)
+-- =============================================
+local function GetChar() return LP.Character end
 local function GetRoot()
     local c = GetChar()
-    return c and (c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart)
+    return c and c:FindFirstChild("HumanoidRootPart")
 end
-
 local function GetHum()
     local c = GetChar()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
-
-local function GetPos()
+local function MyPos()
     local r = GetRoot()
-    return r and r.Position or Vector3.new(0, 0, 0)
+    return r and r.Position or Vector3.zero
 end
-
-local function Dist(p)
-    return (GetPos() - p).Magnitude
-end
-
+local function Dist(p) return (MyPos()-p).Magnitude end
 local function Alive()
     local h = GetHum()
     return h and h.Health > 0
 end
 
-local function Notify(t, d)
+local function Notify(t,d)
     pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = "SYN-STUDIO",
-            Text = t or "",
-            Duration = d or 3,
-        })
+        SG:SetCore("SendNotification",{Title="SYN",Text=t or"",Duration=d or 2})
     end)
 end
 
-local function AddConn(c)
-    table.insert(STATE.Conns, c)
+local function DisconnectAll()
+    if State.MainConn then pcall(function() State.MainConn:Disconnect() end) State.MainConn=nil end
+    if State.EspConn then pcall(function() State.EspConn:Disconnect() end) State.EspConn=nil end
+    if State.MoveConn then pcall(function() State.MoveConn:Disconnect() end) State.MoveConn=nil end
+    for _,c in ipairs(State.Conns) do pcall(function() c:Disconnect() end) end
+    State.Conns = {}
 end
 
-local function ClearConns()
-    for _, c in ipairs(STATE.Conns) do
-        pcall(function()
-            if c and typeof(c) == "RBXScriptConnection" then
-                c:Disconnect()
-            end
-        end)
-    end
-    STATE.Conns = {}
-end
+-- =============================================
+-- EGG DETECTION (Optimized - no lag)
+-- Scan hanya per interval, cache results
+-- =============================================
+local EggCache = {}
+local LastScan = 0
 
--- ============================================================
--- SMART TARGET FILTER
--- Membedakan egg vs induk/mob/NPC
--- ============================================================
-local Filter = {}
-
--- Keyword yang menandakan ini BUKAN egg (induk/mob/enemy)
-Filter.ExcludeKeywords = {
-    "mother", "parent", "guardian", "boss", "enemy", "mob",
-    "monster", "creature", "npc", "dragon", "chicken", "hen",
-    "rooster", "bird", "animal", "pet", "guard", "protector",
-    "chaser", "attacker", "induk", "ibu", "mama", "predator",
-    "wild", "hostile", "aggro", "minion", "sentinel"
-}
-
--- Keyword yang menandakan ini ADALAH egg
-Filter.EggKeywords = {
-    "egg", "telur", "ovum", "hatch", "nest_egg", "spawn_egg",
-    "rare_egg", "special_egg", "golden_egg", "mystic_egg"
-}
-
-function Filter.IsExcluded(obj)
-    local name = obj.Name:lower()
-
-    -- Cek exclude keywords
-    for _, kw in ipairs(Filter.ExcludeKeywords) do
-        if name:find(kw) then return true end
-    end
-
-    -- Exclude jika punya Humanoid (itu NPC/mob, bukan egg)
-    if obj:IsA("Model") then
-        if obj:FindFirstChildOfClass("Humanoid") then return true end
-        if obj:FindFirstChild("Head") and obj:FindFirstChild("Torso") then return true end
-        if obj:FindFirstChild("Head") and obj:FindFirstChild("UpperTorso") then return true end
-        if obj:FindFirstChild("HumanoidRootPart") then return true end
-    end
-
-    -- Exclude jika ada health bar / attack script
-    for _, child in ipairs(obj:GetChildren()) do
-        local cn = child.Name:lower()
-        if cn:find("attack") or cn:find("chase") or cn:find("ai") or
-           cn:find("pathfind") or cn:find("aggro") or cn:find("health") then
-            return true
-        end
-    end
-
-    -- Exclude player characters
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player.Character and player.Character == obj then
-            return true
-        end
-    end
-
+local function IsNPC(obj)
+    if not obj:IsA("Model") then return false end
+    if obj:FindFirstChildOfClass("Humanoid") then return true end
+    if obj:FindFirstChild("HumanoidRootPart") then return true end
+    if obj:FindFirstChild("Head") and (obj:FindFirstChild("Torso") or obj:FindFirstChild("UpperTorso")) then return true end
     return false
 end
 
-function Filter.IsEgg(obj)
-    -- Pertama, pastikan BUKAN mob/NPC
-    if Filter.IsExcluded(obj) then return false end
-
-    local name = obj.Name:lower()
-
-    -- Cek egg keywords
-    for _, kw in ipairs(Filter.EggKeywords) do
-        if name:find(kw) then return true end
+local function IsPlayer(obj)
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p.Character and p.Character == obj then return true end
     end
+    return false
+end
 
-    -- Cek attribute
-    if obj:GetAttribute("IsEgg") or obj:GetAttribute("Egg") or
-       obj:GetAttribute("EggType") or obj:GetAttribute("EggRarity") then
-        return true
+local BAD_WORDS = {"mother","parent","guardian","boss","enemy","mob","monster",
+    "creature","npc","dragon","chicken","hen","animal","pet","guard",
+    "chaser","attacker","hostile","wild","predator","minion","zombie",
+    "wolf","bear","spider","snake","induk","musuh"}
+
+local function IsBadName(name)
+    local low = name:lower()
+    for _,w in ipairs(BAD_WORDS) do
+        if low:find(w) then return true end
     end
+    return false
+end
 
-    -- Cek children yang mengindikasikan egg
-    for _, child in ipairs(obj:GetChildren()) do
-        local cn = child.Name:lower()
-        if cn:find("egg") and not cn:find("mother") and not cn:find("parent") then
-            -- Pastikan child ini bukan mob reference
-            if not Filter.IsExcluded(child) then
-                return true
-            end
-        end
+local EGG_WORDS = {"egg","telur","ovum","hatch"}
+
+local function LooksLikeEgg(obj)
+    local low = obj.Name:lower()
+    for _,w in ipairs(EGG_WORDS) do
+        if low:find(w) then return true end
     end
-
-    -- Cek apakah parent foldernya terkait egg
+    -- check attributes
+    for _,a in ipairs({"IsEgg","Egg","EggType","EggRarity","Rarity"}) do
+        if obj:GetAttribute(a) ~= nil then return true end
+    end
+    -- check parent folder
     if obj.Parent then
-        local pn = obj.Parent.Name:lower()
-        if (pn:find("egg") or pn:find("nest") or pn:find("spawn")) and
-           not pn:find("mother") and not pn:find("mob") then
-            -- Tapi obj sendiri harus bukan humanoid
-            if not obj:FindFirstChildOfClass("Humanoid") then
-                return true
-            end
+        local plow = obj.Parent.Name:lower()
+        for _,w in ipairs(EGG_WORDS) do
+            if plow:find(w) then return true end
         end
     end
-
     return false
 end
 
--- ============================================================
--- EGG SCANNER
--- ============================================================
-local Scanner = {}
-
-function Scanner.GetRarity(obj)
-    local name = obj.Name:lower()
-
-    for _, r in ipairs(CFG.RarityOrder) do
-        if name:find(r:lower()) then return r end
+local function GetRarity(obj)
+    -- check name
+    local low = obj.Name:lower()
+    for _,r in ipairs(Config.RarityList) do
+        if low:find(r:lower()) then return r end
     end
-
-    -- Attribute check
-    for _, attrName in ipairs({"Rarity", "Tier", "Grade", "Type", "EggRarity"}) do
-        local attr = obj:GetAttribute(attrName)
-        if attr then
-            local a = tostring(attr):lower()
-            for _, r in ipairs(CFG.RarityOrder) do
-                if a:find(r:lower()) then return r end
+    -- check attributes
+    for _,aName in ipairs({"Rarity","Tier","Grade","Type","EggRarity","EggTier"}) do
+        local a = obj:GetAttribute(aName)
+        if a then
+            local al = tostring(a):lower()
+            for _,r in ipairs(Config.RarityList) do
+                if al:find(r:lower()) then return r end
             end
         end
     end
-
-    -- Value objects
-    for _, child in ipairs(obj:GetChildren()) do
-        if child:IsA("StringValue") then
-            local cn = child.Name:lower()
-            if cn == "rarity" or cn == "tier" or cn == "type" or cn == "grade" then
-                local v = child.Value:lower()
-                for _, r in ipairs(CFG.RarityOrder) do
-                    if v:find(r:lower()) then return r end
-                end
+    -- check string values
+    for _,ch in ipairs(obj:GetChildren()) do
+        if ch:IsA("StringValue") then
+            local cl = ch.Value:lower()
+            for _,r in ipairs(Config.RarityList) do
+                if cl:find(r:lower()) then return r end
             end
         end
     end
-
-    -- Billboard text
-    for _, d in ipairs(obj:GetDescendants()) do
+    -- check parent name
+    if obj.Parent then
+        local pl = obj.Parent.Name:lower()
+        for _,r in ipairs(Config.RarityList) do
+            if pl:find(r:lower()) then return r end
+        end
+    end
+    -- check text labels inside
+    for _,d in ipairs(obj:GetDescendants()) do
         if d:IsA("TextLabel") then
-            local t = d.Text:lower()
-            for _, r in ipairs(CFG.RarityOrder) do
-                if t:find(r:lower()) then return r end
+            local tl = d.Text:lower()
+            for _,r in ipairs(Config.RarityList) do
+                if tl:find(r:lower()) then return r end
             end
         end
     end
-
-    -- Parent name
-    if obj.Parent then
-        local pn = obj.Parent.Name:lower()
-        for _, r in ipairs(CFG.RarityOrder) do
-            if pn:find(r:lower()) then return r end
-        end
-    end
-
     return nil
 end
 
-function Scanner.GetWeight(obj)
-    -- Attributes
-    for _, a in ipairs({"Weight","Kilogram","Mass","KG","Kg","weight","kg","mass"}) do
+local function GetWeight(obj)
+    for _,a in ipairs({"Weight","Kilogram","Mass","KG","Kg","weight","kg","mass"}) do
         local v = obj:GetAttribute(a)
-        if v then
-            local n = tonumber(v)
-            if n and n > 0 then return n end
-        end
+        if v then local n=tonumber(v) if n and n>0 then return n end end
     end
-
-    -- Value objects
-    for _, child in ipairs(obj:GetChildren()) do
-        if child:IsA("NumberValue") or child:IsA("IntValue") then
-            local cn = child.Name:lower()
+    for _,ch in ipairs(obj:GetChildren()) do
+        if (ch:IsA("NumberValue") or ch:IsA("IntValue")) then
+            local cn = ch.Name:lower()
             if cn:find("weight") or cn:find("kg") or cn:find("mass") then
-                return child.Value
-            end
-        end
-        if child:IsA("StringValue") then
-            local cn = child.Name:lower()
-            if cn:find("weight") or cn:find("kg") then
-                local n = tonumber(child.Value)
-                if n then return n end
+                return ch.Value
             end
         end
     end
-
-    -- Name pattern
     local nw = obj.Name:match("(%d+)%s*[kK][gG]")
     if nw then return tonumber(nw) or 0 end
-
-    -- Text labels
-    for _, d in ipairs(obj:GetDescendants()) do
-        if d:IsA("TextLabel") then
-            local tw = d.Text:match("(%d+)%s*[kK][gG]")
-            if tw then return tonumber(tw) or 0 end
-        end
-    end
-
     return 0
 end
 
-function Scanner.GetEggPos(obj)
+local function GetObjPos(obj)
     if obj:IsA("BasePart") then return obj.Position end
     if obj:IsA("Model") then
-        local p = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+        if obj.PrimaryPart then return obj.PrimaryPart.Position end
+        local p = obj:FindFirstChildWhichIsA("BasePart")
         if p then return p.Position end
     end
     return nil
 end
 
-function Scanner.Scan()
+local function ScanEggs()
     local results = {}
+    for _,obj in ipairs(WS:GetDescendants()) do
+        if obj:IsA("BasePart") or obj:IsA("Model") then
+            if LooksLikeEgg(obj) and not IsBadName(obj.Name) then
+                if obj:IsA("Model") and IsNPC(obj) then continue end
+                if IsPlayer(obj) then continue end
 
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if (obj:IsA("BasePart") or obj:IsA("Model")) and Filter.IsEgg(obj) then
-            local rar = Scanner.GetRarity(obj)
-            local wt = Scanner.GetWeight(obj)
-            local pos = Scanner.GetEggPos(obj)
+                local rar = GetRarity(obj)
+                local pos = GetObjPos(obj)
 
-            if pos and rar and CFG.Rarity[rar] and CFG.Rarity[rar].On then
-                local d = Dist(pos)
-                if d <= CFG.ScanRange then
-                    table.insert(results, {
-                        Obj   = obj,
-                        Rar   = rar,
-                        Wt    = wt,
-                        Pos   = pos,
-                        Pri   = CFG.Rarity[rar].Priority,
-                        Big   = wt >= CFG.BigKG,
-                        Dist  = d,
+                if pos and rar and Config.RarityEnabled[rar] then
+                    local wt = GetWeight(obj)
+                    table.insert(results,{
+                        Obj=obj, Rar=rar, Wt=wt, Pos=pos,
+                        Pri=Config.RarityPri[rar] or 99,
+                        Big=wt>=Config.BigKG,
+                        Dist=Dist(pos),
                     })
                 end
             end
         end
     end
-
     return results
 end
 
-function Scanner.Best(list)
-    if #list == 0 then return nil end
-
-    table.sort(list, function(a, b)
-        -- Big egg priority
-        if CFG.BigPriority then
+local function BestEgg(list)
+    if #list==0 then return nil end
+    table.sort(list, function(a,b)
+        if Config.BigMode then
             if a.Big and not b.Big then return true end
             if not a.Big and b.Big then return false end
-            if a.Big and b.Big and a.Wt ~= b.Wt then
-                return a.Wt > b.Wt
-            end
+            if a.Big and b.Big and a.Wt~=b.Wt then return a.Wt>b.Wt end
         end
-        -- Rarity priority
-        if a.Pri ~= b.Pri then return a.Pri < b.Pri end
-        -- Distance
-        return a.Dist < b.Dist
+        if a.Pri~=b.Pri then return a.Pri<b.Pri end
+        return a.Dist<b.Dist
     end)
-
     return list[1]
 end
 
--- ============================================================
--- MOVEMENT ENGINE
--- Cepat tapi smooth, bukan teleport
--- Menggunakan BodyVelocity + CFrame facing
--- ============================================================
-local Mover = {}
+-- =============================================
+-- MOVEMENT (Simple & Working)
+-- Direct CFrame lerp per frame, NO BodyVelocity
+-- =============================================
+local function MoveToTarget(targetObj, speed, onArrive)
+    -- Stop previous movement
+    if State.MoveConn then
+        pcall(function() State.MoveConn:Disconnect() end)
+        State.MoveConn = nil
+    end
 
-function Mover.CreateBV(root)
-    local old = root:FindFirstChild("_mv_" .. _ID)
-    if old then old:Destroy() end
-
-    local bv = Instance.new("BodyVelocity")
-    bv.Name = "_mv_" .. _ID
-    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    bv.Velocity = Vector3.new(0, 0, 0)
-    bv.P = 1e5
-    bv.Parent = root
-
-    -- Anti gravity
-    local bg = root:FindFirstChild("_bg_" .. _ID)
-    if bg then bg:Destroy() end
-
-    local bodyG = Instance.new("BodyForce")
-    bodyG.Name = "_bg_" .. _ID
-    bodyG.Force = Vector3.new(0, Workspace.Gravity * root:GetMass(), 0)
-    bodyG.Parent = root
-
-    return bv
-end
-
-function Mover.RemoveBV(root)
-    local bv = root:FindFirstChild("_mv_" .. _ID)
-    if bv then bv:Destroy() end
-    local bg = root:FindFirstChild("_bg_" .. _ID)
-    if bg then bg:Destroy() end
-end
-
-function Mover.GoTo(targetPos, speed, onArrive)
-    local root = GetRoot()
-    local hum = GetHum()
-    if not root or not hum then return end
-
-    local bv = Mover.CreateBV(root)
-    local currentSpeed = 0
-
-    local conn
-    conn = RunService.Heartbeat:Connect(function(dt)
-        if not CFG.Active or not Alive() then
-            bv.Velocity = Vector3.zero
-            Mover.RemoveBV(root)
-            if conn then conn:Disconnect() end
+    State.MoveConn = RS.RenderStepped:Connect(function(dt)
+        local root = GetRoot()
+        local hum = GetHum()
+        if not root or not hum or not Alive() or not Config.Active then
+            if State.MoveConn then State.MoveConn:Disconnect() State.MoveConn=nil end
             return
         end
 
-        -- Update target jika target masih ada
-        local tPos = targetPos
-        if STATE.Target and STATE.Target.Parent then
-            local newPos = Scanner.GetEggPos(STATE.Target)
-            if newPos then tPos = newPos end
+        -- Get current target position (bisa bergerak)
+        local tPos
+        if targetObj and targetObj.Parent then
+            tPos = GetObjPos(targetObj)
+        end
+        -- Jika target hilang, pakai SafePos untuk escape
+        if not tPos then
+            if State.Escaping and Config.SafePos then
+                tPos = Config.SafePos
+            else
+                if State.MoveConn then State.MoveConn:Disconnect() State.MoveConn=nil end
+                State.Moving = false
+                return
+            end
         end
 
-        local myPos = root.Position
-        local delta = tPos - myPos
+        local myP = root.Position
+        local delta = tPos - myP
         local dist = delta.Magnitude
 
-        -- Arrival check
-        if dist <= CFG.GrabDist then
-            bv.Velocity = Vector3.zero
-            Mover.RemoveBV(root)
-            if conn then conn:Disconnect() end
+        -- Arrived
+        if dist <= Config.GrabDist then
+            if State.MoveConn then State.MoveConn:Disconnect() State.MoveConn=nil end
+            hum.WalkSpeed = 16
+            if onArrive then onArrive() end
+            return
+        end
+
+        -- Calculate step
+        local dir = delta.Unit
+        local step = math.min(speed * dt, dist)
+        local newPos = myP + dir * step
+
+        -- Keep Y stable (don't fly underground)
+        -- Raycast down to find ground
+        local rayResult = WS:Raycast(
+            Vector3.new(newPos.X, newPos.Y + 10, newPos.Z),
+            Vector3.new(0, -50, 0),
+            RaycastParams.new()
+        )
+        local groundY = rayResult and (rayResult.Position.Y + 3) or newPos.Y
+        newPos = Vector3.new(newPos.X, math.max(newPos.Y, groundY), newPos.Z)
+
+        -- Apply movement
+        local lookDir = Vector3.new(dir.X, 0, dir.Z)
+        if lookDir.Magnitude > 0.01 then
+            root.CFrame = CFrame.new(newPos, newPos + lookDir)
+        else
+            root.CFrame = CFrame.new(newPos)
+        end
+
+        -- Kill velocity so physics doesn't fight us
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end)
+end
+
+local function MoveToPos(pos, speed, onArrive)
+    if State.MoveConn then
+        pcall(function() State.MoveConn:Disconnect() end)
+        State.MoveConn = nil
+    end
+
+    local targetProxy = Instance.new("Part")
+    targetProxy.Anchored = true
+    targetProxy.Position = pos
+    targetProxy.Parent = nil -- don't parent, just use for position
+
+    State.MoveConn = RS.RenderStepped:Connect(function(dt)
+        local root = GetRoot()
+        local hum = GetHum()
+        if not root or not hum or not Alive() or not Config.Active then
+            if State.MoveConn then State.MoveConn:Disconnect() State.MoveConn=nil end
+            return
+        end
+
+        local myP = root.Position
+        local delta = pos - myP
+        local dist = delta.Magnitude
+
+        if dist <= Config.SafeDist then
+            if State.MoveConn then State.MoveConn:Disconnect() State.MoveConn=nil end
+            hum.WalkSpeed = 16
             if onArrive then onArrive() end
             return
         end
 
         local dir = delta.Unit
+        local step = math.min(speed * dt, dist)
+        local newPos = myP + dir * step
 
-        -- Smooth acceleration
-        local targetSpeed = math.min(speed or CFG.MoveSpeed, dist * 3)
-        currentSpeed = currentSpeed + (targetSpeed - currentSpeed) * math.min(dt * CFG.Acceleration, 1)
+        local rayResult = WS:Raycast(
+            Vector3.new(newPos.X, newPos.Y + 10, newPos.Z),
+            Vector3.new(0, -50, 0),
+            RaycastParams.new()
+        )
+        local groundY = rayResult and (rayResult.Position.Y + 3) or newPos.Y
+        newPos = Vector3.new(newPos.X, math.max(newPos.Y, groundY), newPos.Z)
 
-        -- Horizontal movement only via BV, maintain Y
-        local vel = Vector3.new(dir.X, 0, dir.Z).Unit * currentSpeed
-
-        -- Jika target lebih tinggi/rendah, tambah sedikit Y velocity
-        local yDiff = tPos.Y - myPos.Y
-        if math.abs(yDiff) > 3 then
-            vel = vel + Vector3.new(0, math.clamp(yDiff * 2, -50, 50), 0)
+        local lookDir = Vector3.new(dir.X, 0, dir.Z)
+        if lookDir.Magnitude > 0.01 then
+            root.CFrame = CFrame.new(newPos, newPos + lookDir)
+        else
+            root.CFrame = CFrame.new(newPos)
         end
 
-        bv.Velocity = vel
-
-        -- Face direction
-        pcall(function()
-            local lookDir = Vector3.new(dir.X, 0, dir.Z)
-            if lookDir.Magnitude > 0.01 then
-                root.CFrame = CFrame.new(root.Position, root.Position + lookDir)
-            end
-        end)
-
-        -- Spoof walkspeed
-        if CFG.Stealth then
-            hum.WalkSpeed = math.min(currentSpeed * 0.3, 50)
-        end
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
     end)
-
-    AddConn(conn)
-    return conn
 end
 
-function Mover.Stop()
-    local root = GetRoot()
-    if root then Mover.RemoveBV(root) end
+local function StopMove()
+    if State.MoveConn then
+        pcall(function() State.MoveConn:Disconnect() end)
+        State.MoveConn = nil
+    end
     local hum = GetHum()
-    if hum then hum.WalkSpeed = CFG.BaseSpeed end
+    if hum then hum.WalkSpeed = 16 end
 end
 
--- ============================================================
--- SAFE ZONE
--- ============================================================
-local SafeZone = {}
-
-function SafeZone.Find()
-    local keywords = {
-        "safe", "spawn", "base", "home", "lobby",
-        "hub", "camp", "start", "nest_base", "safezone"
-    }
-
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("BasePart") or obj:IsA("SpawnLocation") then
-            local nl = obj.Name:lower()
-            for _, kw in ipairs(keywords) do
-                if nl:find(kw) then
-                    CFG.SafePos = obj.Position
-                    return obj.Position
-                end
-            end
-        elseif obj:IsA("Model") then
-            local nl = obj.Name:lower()
-            for _, kw in ipairs(keywords) do
-                if nl:find(kw) then
-                    local p = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-                    if p then
-                        CFG.SafePos = p.Position
-                        return p.Position
-                    end
-                end
-            end
-        end
-    end
-
-    -- Fallback: SpawnLocation
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("SpawnLocation") then
-            CFG.SafePos = obj.Position
-            return obj.Position
-        end
-    end
-
-    CFG.SafePos = GetPos()
-    return CFG.SafePos
-end
-
-function SafeZone.Get()
-    if not CFG.SafePos then SafeZone.Find() end
-    return CFG.SafePos
-end
-
-function SafeZone.IsInside()
-    local p = SafeZone.Get()
-    return p and Dist(p) <= CFG.SafeDist
-end
-
--- ============================================================
--- PICKUP SYSTEM
--- ============================================================
-local Pickup = {}
-
-function Pickup.FindPrompt(obj)
-    if not obj then return nil end
-
-    -- Direct child
-    local p = obj:FindFirstChildOfClass("ProximityPrompt")
-    if p then return p end
-
-    -- Descendants
-    for _, d in ipairs(obj:GetDescendants()) do
-        if d:IsA("ProximityPrompt") then return d end
-    end
-
-    -- Parent & siblings
-    if obj.Parent then
-        p = obj.Parent:FindFirstChildOfClass("ProximityPrompt")
+-- =============================================
+-- PICKUP
+-- =============================================
+local function DoPickup(egg)
+    -- ProximityPrompt
+    local function findPrompt(obj)
+        local p = obj:FindFirstChildOfClass("ProximityPrompt")
         if p then return p end
-        for _, d in ipairs(obj.Parent:GetDescendants()) do
+        for _,d in ipairs(obj:GetDescendants()) do
             if d:IsA("ProximityPrompt") then return d end
         end
-    end
-
-    return nil
-end
-
-function Pickup.FindClick(obj)
-    if obj:IsA("BasePart") then
-        local cd = obj:FindFirstChildOfClass("ClickDetector")
-        if cd then return cd end
-    end
-    for _, d in ipairs(obj:GetDescendants()) do
-        if d:IsA("ClickDetector") then return d end
-    end
-    return nil
-end
-
-function Pickup.FindButton()
-    local pg = LP:FindFirstChild("PlayerGui")
-    if not pg then return nil end
-
-    local keywords = {
-        "pickup", "pick", "grab", "take", "lift",
-        "collect", "steal", "carry", "interact", "claim",
-        "ambil", "angkat"
-    }
-
-    for _, g in ipairs(pg:GetDescendants()) do
-        if (g:IsA("TextButton") or g:IsA("ImageButton")) and g.Visible then
-            local nl = g.Name:lower()
-            local tl = g:IsA("TextButton") and g.Text:lower() or ""
-            for _, kw in ipairs(keywords) do
-                if nl:find(kw) or tl:find(kw) then
-                    if g.AbsoluteSize.X > 0 and g.AbsoluteSize.Y > 0 then
-                        return g
-                    end
-                end
+        if obj.Parent then
+            for _,d in ipairs(obj.Parent:GetDescendants()) do
+                if d:IsA("ProximityPrompt") then return d end
             end
         end
+        return nil
     end
 
-    return nil
-end
-
-function Pickup.Execute(egg)
-    -- 1) ProximityPrompt
-    local prompt = Pickup.FindPrompt(egg)
+    local prompt = findPrompt(egg)
     if prompt then
-        local origHold = prompt.HoldDuration
-        local origDist = prompt.MaxActivationDistance
-        local origLOS = prompt.RequiresLineOfSight
-
+        local oh,od,ol = prompt.HoldDuration, prompt.MaxActivationDistance, prompt.RequiresLineOfSight
         prompt.HoldDuration = 0
         prompt.MaxActivationDistance = 9999
         prompt.RequiresLineOfSight = false
         prompt.Enabled = true
-
-        pcall(function()
-            if fireproximityprompt then
-                fireproximityprompt(prompt, 1)
-            end
-        end)
-
+        pcall(function() fireproximityprompt(prompt,1) end)
         task.delay(0.3, function()
-            pcall(function()
-                prompt.HoldDuration = origHold
-                prompt.MaxActivationDistance = origDist
-                prompt.RequiresLineOfSight = origLOS
-            end)
+            pcall(function() prompt.HoldDuration=oh prompt.MaxActivationDistance=od prompt.RequiresLineOfSight=ol end)
         end)
         return true
     end
 
-    -- 2) ClickDetector
-    local cd = Pickup.FindClick(egg)
+    -- ClickDetector
+    local function findClick(obj)
+        for _,d in ipairs(obj:GetDescendants()) do
+            if d:IsA("ClickDetector") then return d end
+        end
+        if obj:IsA("BasePart") then
+            local cd = obj:FindFirstChildOfClass("ClickDetector")
+            if cd then return cd end
+        end
+        return nil
+    end
+
+    local cd = findClick(egg)
     if cd then
-        pcall(function()
-            if fireclickdetector then
-                fireclickdetector(cd)
-            end
-        end)
+        pcall(function() fireclickdetector(cd) end)
         return true
     end
 
-    -- 3) GUI Button
-    local btn = Pickup.FindButton()
-    if btn then
-        pcall(function()
-            if firesignal then
-                firesignal(btn.Activated)
-                firesignal(btn.MouseButton1Click)
+    -- GUI Button
+    local pg = LP:FindFirstChild("PlayerGui")
+    if pg then
+        local kws = {"pickup","grab","take","lift","collect","steal","carry","interact","claim","ambil","angkat"}
+        for _,g in ipairs(pg:GetDescendants()) do
+            if (g:IsA("TextButton") or g:IsA("ImageButton")) and g.Visible then
+                local nl = g.Name:lower()
+                local tl = g:IsA("TextButton") and g.Text:lower() or ""
+                for _,kw in ipairs(kws) do
+                    if nl:find(kw) or tl:find(kw) then
+                        pcall(function()
+                            if firesignal then
+                                firesignal(g.Activated)
+                                firesignal(g.MouseButton1Click)
+                            end
+                        end)
+                        return true
+                    end
+                end
             end
-        end)
-        return true
+        end
     end
 
-    -- 4) Touch
+    -- Touch
     pcall(function()
         local root = GetRoot()
         local part = egg:IsA("BasePart") and egg or egg:FindFirstChildWhichIsA("BasePart")
         if root and part and firetouchinterest then
-            firetouchinterest(root, part, 0)
-            task.wait(0.03)
-            firetouchinterest(root, part, 1)
+            firetouchinterest(root,part,0)
+            task.wait(0.05)
+            firetouchinterest(root,part,1)
         end
     end)
 
-    -- 5) Remote search
+    -- Remotes
     pcall(function()
-        for _, rem in ipairs(ReplicatedStorage:GetDescendants()) do
+        for _,rem in ipairs(RepS:GetDescendants()) do
             if rem:IsA("RemoteEvent") then
-                local rn = rem.Name:lower()
-                if rn:find("pick") or rn:find("grab") or rn:find("steal") or
-                   rn:find("collect") or rn:find("take") then
+                local rl = rem.Name:lower()
+                if rl:find("pick") or rl:find("grab") or rl:find("steal") or rl:find("collect") or rl:find("interact") then
                     rem:FireServer(egg)
                 end
             end
         end
     end)
 
-    return false
+    return true
 end
 
--- ============================================================
--- ESP
--- ============================================================
-local ESP = {}
+-- =============================================
+-- SAFE ZONE
+-- =============================================
+local function FindSafe()
+    local kws = {"safe","spawn","base","home","lobby","hub","camp","start","safezone","nest_base"}
+    for _,obj in ipairs(WS:GetDescendants()) do
+        if obj:IsA("SpawnLocation") then
+            Config.SafePos = obj.Position
+            return
+        end
+        if obj:IsA("BasePart") or obj:IsA("Model") then
+            local nl = obj.Name:lower()
+            for _,kw in ipairs(kws) do
+                if nl:find(kw) then
+                    local p = obj:IsA("BasePart") and obj.Position or GetObjPos(obj)
+                    if p then Config.SafePos = p return end
+                end
+            end
+        end
+    end
+    Config.SafePos = MyPos()
+end
 
-function ESP.Create(egg, rar, wt)
-    if not CFG.ESP then return end
-    ESP.Remove(egg)
+-- =============================================
+-- ESP (lightweight)
+-- =============================================
+local function ClearESP()
+    for obj,data in pairs(State.Esps) do
+        pcall(function() data.BB:Destroy() end)
+    end
+    State.Esps = {}
+end
 
-    local pos = Scanner.GetEggPos(egg)
+local function CreateESP(obj, rar, wt)
+    if State.Esps[obj] then return end
+    local pos = GetObjPos(obj)
     if not pos then return end
 
-    local col = CFG.Rarity[rar] and CFG.Rarity[rar].Color or Color3.fromRGB(255,255,255)
-    local big = wt >= CFG.BigKG
+    local col = Config.RarityCol[rar] or Color3.fromRGB(255,255,255)
+    local big = wt >= Config.BigKG
 
     local bb = Instance.new("BillboardGui")
-    bb.Name = rid(8)
-    bb.Size = UDim2.new(0, 160, 0, 50)
-    bb.StudsOffset = Vector3.new(0, 4, 0)
+    bb.Name = rn(6)
+    bb.Size = UDim2.new(0,140,0,40)
+    bb.StudsOffset = Vector3.new(0,4,0)
     bb.AlwaysOnTop = true
-    bb.MaxDistance = 2000
-    bb.LightInfluence = 0
+    bb.MaxDistance = 1500
 
     local fr = Instance.new("Frame")
-    fr.Size = UDim2.new(1, 0, 1, 0)
-    fr.BackgroundColor3 = Color3.fromRGB(8, 8, 16)
+    fr.Size = UDim2.new(1,0,1,0)
+    fr.BackgroundColor3 = Color3.fromRGB(10,10,18)
     fr.BackgroundTransparency = 0.15
     fr.BorderSizePixel = 0
     fr.Parent = bb
-    Instance.new("UICorner", fr).CornerRadius = UDim.new(0, 6)
+    Instance.new("UICorner",fr).CornerRadius = UDim.new(0,5)
+    local s = Instance.new("UIStroke")
+    s.Color = col s.Thickness = big and 2 or 1 s.Parent = fr
 
-    local stk = Instance.new("UIStroke")
-    stk.Color = col
-    stk.Thickness = big and 2.5 or 1.2
-    stk.Parent = fr
-
-    local rl = Instance.new("TextLabel")
-    rl.Size = UDim2.new(1, -6, 0.5, 0)
-    rl.Position = UDim2.new(0, 3, 0, 0)
-    rl.BackgroundTransparency = 1
-    rl.Text = (big and "[BIG] " or "") .. rar:upper()
-    rl.TextColor3 = col
-    rl.TextScaled = true
-    rl.Font = Enum.Font.GothamBold
-    rl.Parent = fr
+    local tl = Instance.new("TextLabel")
+    tl.Size = UDim2.new(1,0,0.55,0)
+    tl.BackgroundTransparency = 1
+    tl.Text = (big and "BIG " or "")..rar:upper()
+    tl.TextColor3 = col
+    tl.TextScaled = true
+    tl.Font = Enum.Font.GothamBold
+    tl.Parent = fr
 
     local dl = Instance.new("TextLabel")
     dl.Name = "D"
-    dl.Size = UDim2.new(1, -6, 0.45, 0)
-    dl.Position = UDim2.new(0, 3, 0.52, 0)
+    dl.Size = UDim2.new(1,0,0.45,0)
+    dl.Position = UDim2.new(0,0,0.55,0)
     dl.BackgroundTransparency = 1
-    dl.Text = wt > 0 and (wt .. "kg | --m") or "--m"
-    dl.TextColor3 = Color3.fromRGB(170, 170, 190)
+    dl.Text = ""
+    dl.TextColor3 = Color3.fromRGB(160,160,180)
     dl.TextScaled = true
     dl.Font = Enum.Font.Gotham
     dl.Parent = fr
 
-    if egg:IsA("BasePart") then
-        bb.Adornee = egg
-    elseif egg:IsA("Model") then
-        bb.Adornee = egg.PrimaryPart or egg:FindFirstChildWhichIsA("BasePart")
-    end
+    local adornee = obj:IsA("BasePart") and obj or (obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")))
+    if adornee then bb.Adornee = adornee end
+    bb.Parent = CG
 
-    bb.Parent = CoreGui
-    STATE.EspList[egg] = { BB = bb, DL = dl, Wt = wt }
+    State.Esps[obj] = {BB=bb, DL=dl, Wt=wt}
 end
 
-function ESP.Update()
-    for egg, data in pairs(STATE.EspList) do
-        if egg and egg.Parent then
-            local p = Scanner.GetEggPos(egg)
-            if p and data.DL then
+local function UpdateESP()
+    for obj,data in pairs(State.Esps) do
+        if obj and obj.Parent then
+            local p = GetObjPos(obj)
+            if p then
                 local d = math.floor(Dist(p))
-                data.DL.Text = (data.Wt > 0 and (data.Wt .. "kg | ") or "") .. d .. "m"
+                data.DL.Text = (data.Wt>0 and (data.Wt.."kg  ") or "")..d.."m"
             end
         else
-            ESP.Remove(egg)
+            pcall(function() data.BB:Destroy() end)
+            State.Esps[obj] = nil
         end
     end
 end
 
-function ESP.Remove(egg)
-    if STATE.EspList[egg] then
-        pcall(function() STATE.EspList[egg].BB:Destroy() end)
-        STATE.EspList[egg] = nil
-    end
-end
-
-function ESP.Clear()
-    for egg in pairs(STATE.EspList) do
-        ESP.Remove(egg)
-    end
-    STATE.EspList = {}
-end
-
--- ============================================================
+-- =============================================
 -- CONTROLLER
--- ============================================================
-local Ctrl = {}
+-- =============================================
+local function GrabEgg(data)
+    if State.Moving or State.HasEgg then return end
+    State.Moving = true
+    State.Target = data.Obj
+    State.TargetRar = data.Rar
+    State.TargetKG = data.Wt
 
-function Ctrl.Grab(data)
-    if STATE.Grabbing or STATE.HasEgg then return end
+    Notify(data.Rar:upper()..(data.Big and " BIG "..data.Wt.."kg" or "").." | Moving",2)
 
-    STATE.Grabbing = true
-    STATE.Target = data.Obj
-    STATE.TargetRar = data.Rar
-    STATE.TargetKG = data.Wt
+    MoveToTarget(data.Obj, Config.Speed, function()
+        -- Arrived at egg
+        State.Moving = false
+        task.wait(0.02)
 
-    local bigText = data.Big and (" / " .. data.Wt .. "kg BIG") or ""
-    Notify(data.Rar:upper() .. bigText .. " detected. Moving...", 2)
+        -- Try pickup multiple times
+        for i=1,5 do
+            DoPickup(data.Obj)
+            task.wait(0.06)
+        end
 
-    if CFG.Stealth then
-        task.wait(0.03 + math.random() * 0.07)
-    end
+        State.HasEgg = true
+        Notify(data.Rar:upper().." grabbed | Escaping",2)
 
-    Mover.GoTo(data.Pos, CFG.MoveSpeed, function()
-        Ctrl.DoPickup(data)
+        if Config.AutoEsc then
+            Escape()
+        end
     end)
 end
 
-function Ctrl.DoPickup(data)
-    task.wait(CFG.GrabDelay)
+function Escape()
+    local sp = Config.SafePos
+    if not sp then FindSafe() sp = Config.SafePos end
+    if not sp then Notify("No safe zone",2) return end
 
-    local ok = false
-    for i = 1, 6 do
-        ok = Pickup.Execute(data.Obj)
-        if ok then break end
-        task.wait(0.04)
+    State.Escaping = true
 
-        local btn = Pickup.FindButton()
-        if btn then
-            pcall(function()
-                if firesignal then
-                    firesignal(btn.Activated)
-                    firesignal(btn.MouseButton1Click)
-                end
-            end)
-            ok = true
-            break
-        end
-    end
-
-    if ok then
-        STATE.HasEgg = true
-        STATE.Carrying = true
-        STATE.Grabbing = false
-
-        Notify(data.Rar:upper() .. " secured. Heading to safe zone.", 2)
-
-        if CFG.AutoEscape then
-            Ctrl.Escape()
-        else
-            STATE.Grabbing = false
-        end
-    else
-        STATE.Grabbing = false
-        Notify("Pickup failed. Retrying next scan.", 2)
-    end
-end
-
-function Ctrl.Escape()
-    STATE.Escaping = true
-    STATE.Grabbing = false
-
-    local sp = SafeZone.Get()
-    if not sp then
-        Notify("No safe zone found.", 2)
-        STATE.Escaping = false
-        return
-    end
-
-    Mover.GoTo(sp, CFG.EscSpeed, function()
-        Mover.Stop()
-        STATE.Escaping = false
-        STATE.Carrying = false
-
-        Notify(STATE.TargetRar:upper() .. " egg delivered.", 3)
-
-        task.wait(0.4)
-        STATE.HasEgg = false
-        STATE.Target = nil
-        STATE.TargetRar = nil
-        STATE.TargetKG = 0
+    MoveToPos(sp, Config.EscSpeed, function()
+        State.Escaping = false
+        State.HasEgg = false
+        State.Target = nil
+        State.TargetRar = nil
+        State.TargetKG = 0
+        StopMove()
+        Notify("Egg delivered. Ready for next.",3)
     end)
 end
 
-function Ctrl.FullStop()
-    CFG.Active = false
-    STATE.Grabbing = false
-    STATE.Escaping = false
-    STATE.Carrying = false
-    STATE.HasEgg = false
-    STATE.Target = nil
-    STATE.TargetRar = nil
-    STATE.TargetKG = 0
-
-    Mover.Stop()
-    ClearConns()
-    ESP.Clear()
+local function FullStop()
+    Config.Active = false
+    StopMove()
+    State.Moving = false
+    State.Escaping = false
+    State.HasEgg = false
+    State.Target = nil
+    State.TargetRar = nil
+    State.TargetKG = 0
+    DisconnectAll()
+    ClearESP()
 end
 
--- ============================================================
+-- =============================================
 -- ANTI DROP
--- ============================================================
-local function EnableAntiDrop()
-    if not CFG.AntiDrop then return end
+-- =============================================
+local function SetupAntiDrop()
     local hum = GetHum()
     if not hum then return end
-
     local c = hum.HealthChanged:Connect(function()
-        if STATE.Carrying and STATE.HasEgg then
-            local root = GetRoot()
-            if root then
-                local bv = root:FindFirstChild("_mv_" .. _ID)
-                if bv then
-                    bv.Velocity = bv.Velocity * 1.6
-                end
-            end
+        if State.HasEgg and State.Escaping then
+            -- nothing complex, the CFrame movement already ignores knockback
         end
     end)
-    AddConn(c)
+    table.insert(State.Conns, c)
 end
 
--- ============================================================
--- MAIN LOOP
--- ============================================================
-local MainLoop = {}
+-- =============================================
+-- MAIN LOOP (Optimized - scan every 0.5s NOT every frame)
+-- =============================================
+local function StartLoop()
+    Config.Active = true
+    FindSafe()
+    SetupAntiDrop()
+    Notify("Activated. Scanning...",2)
 
-function MainLoop.Start()
-    CFG.Active = true
-    SafeZone.Find()
-    EnableAntiDrop()
+    -- SCAN LOOP - runs every 0.5 seconds, NOT every frame
+    State.MainConn = task.spawn(function()
+        while Config.Active do
+            if Alive() and not State.Moving and not State.Escaping and not State.HasEgg then
+                local eggs = ScanEggs()
 
-    Notify("Activated. Scanning for eggs...", 3)
+                -- Update ESP
+                if Config.ShowESP then
+                    ClearESP()
+                    for _,ed in ipairs(eggs) do
+                        CreateESP(ed.Obj, ed.Rar, ed.Wt)
+                    end
+                end
 
-    local scanConn = RunService.Heartbeat:Connect(function()
-        if not CFG.Active then return end
-        if not Alive() then return end
-        if STATE.Grabbing or STATE.Escaping or STATE.HasEgg then return end
-
-        local eggs = Scanner.Scan()
-
-        if CFG.ESP then
-            ESP.Clear()
-            for _, ed in ipairs(eggs) do
-                ESP.Create(ed.Obj, ed.Rar, ed.Wt)
+                local best = BestEgg(eggs)
+                if best then
+                    GrabEgg(best)
+                end
             end
-        end
-
-        local best = Scanner.Best(eggs)
-        if best then
-            Ctrl.Grab(best)
-        end
-    end)
-    AddConn(scanConn)
-
-    task.spawn(function()
-        while CFG.Active do
-            ESP.Update()
             task.wait(0.5)
         end
     end)
+
+    -- ESP distance update - every 1 second
+    State.EspConn = task.spawn(function()
+        while Config.Active do
+            if Config.ShowESP then UpdateESP() end
+            task.wait(1)
+        end
+    end)
 end
 
--- ============================================================
--- UI - CLEAN MINIMALIST (NO EMOJI)
--- ============================================================
-local UI = {}
+-- =============================================
+-- UI - ANIME/MANGA AESTHETIC
+-- Dark theme with sharp accents, manga-style typography
+-- =============================================
 
-function UI.GetScale()
-    local vx = Camera.ViewportSize.X
-    local vy = Camera.ViewportSize.Y
-    local mobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+-- Color Palette (Manga/Anime inspired)
+local P = {
+    -- Base
+    bg       = Color3.fromRGB(10, 10, 16),
+    panel    = Color3.fromRGB(16, 16, 26),
+    card     = Color3.fromRGB(22, 22, 34),
+    cardHi   = Color3.fromRGB(28, 28, 42),
 
-    local w, h
-    if mobile then
-        w = math.clamp(vx * 0.88, 280, 400)
-        h = math.clamp(vy * 0.72, 380, 600)
-    else
-        w = math.clamp(vx * 0.2, 300, 400)
-        h = math.clamp(vy * 0.7, 400, 640)
-    end
+    -- Accents
+    accent   = Color3.fromRGB(220, 50, 80),   -- manga red
+    accent2  = Color3.fromRGB(180, 40, 65),
+    blue     = Color3.fromRGB(60, 130, 255),
+    cyan     = Color3.fromRGB(40, 200, 220),
+    gold     = Color3.fromRGB(240, 190, 50),
 
-    return w, h, mobile
-end
+    -- Text
+    white    = Color3.fromRGB(235, 235, 245),
+    text     = Color3.fromRGB(195, 195, 210),
+    dim      = Color3.fromRGB(100, 100, 125),
+    dimmer   = Color3.fromRGB(60, 60, 80),
 
-function UI.Build()
-    -- Cleanup old
-    local old = CoreGui:FindFirstChild(_GN)
+    -- Status
+    green    = Color3.fromRGB(50, 185, 80),
+    red      = Color3.fromRGB(200, 50, 50),
+    orange   = Color3.fromRGB(230, 140, 30),
+
+    -- Lines
+    line     = Color3.fromRGB(35, 35, 50),
+    lineAcc  = Color3.fromRGB(220, 50, 80),
+}
+
+local function BuildUI()
+    -- Cleanup
+    local old = CG:FindFirstChild(_UI)
     if old then old:Destroy() end
 
-    local W, H, MOBILE = UI.GetScale()
+    local vx = workspace.CurrentCamera.ViewportSize.X
+    local vy = workspace.CurrentCamera.ViewportSize.Y
+    local mobile = UIS.TouchEnabled and not UIS.KeyboardEnabled
+    local W = mobile and math.clamp(vx*0.9, 280, 420) or math.clamp(vx*0.22, 310, 400)
+    local H = mobile and math.clamp(vy*0.75, 380, 620) or math.clamp(vy*0.72, 420, 650)
+    local fs = mobile and 1.15 or 1
 
-    -- Color Palette
-    local C = {
-        bg        = Color3.fromRGB(14, 14, 22),
-        surface   = Color3.fromRGB(20, 20, 32),
-        card      = Color3.fromRGB(24, 24, 38),
-        border    = Color3.fromRGB(45, 35, 80),
-        accent    = Color3.fromRGB(100, 60, 220),
-        accent2   = Color3.fromRGB(75, 45, 180),
-        text      = Color3.fromRGB(210, 210, 225),
-        textDim   = Color3.fromRGB(130, 130, 155),
-        textBright= Color3.fromRGB(240, 240, 255),
-        green     = Color3.fromRGB(45, 160, 65),
-        red       = Color3.fromRGB(170, 45, 45),
-        redBright = Color3.fromRGB(210, 55, 55),
-        greenDim  = Color3.fromRGB(30, 90, 40),
-        redDim    = Color3.fromRGB(90, 25, 25),
-        slider    = Color3.fromRGB(80, 50, 200),
-        sliderBg  = Color3.fromRGB(35, 35, 55),
-        line      = Color3.fromRGB(40, 35, 65),
-    }
+    local Screen = Instance.new("ScreenGui")
+    Screen.Name = _UI
+    Screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    Screen.ResetOnSpawn = false
+    Screen.Parent = CG
 
-    local SG = Instance.new("ScreenGui")
-    SG.Name = _GN
-    SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    SG.ResetOnSpawn = false
-    SG.Parent = CoreGui
-
-    -- Responsive scale
-    local uiScale = Instance.new("UIScale")
-    uiScale.Parent = SG
-
+    -- Scale
+    local uisc = Instance.new("UIScale")
+    uisc.Parent = Screen
     local function rescale()
-        local vx = Camera.ViewportSize.X
-        local s = MOBILE and math.clamp(vx / 1080, 0.65, 1.25) or math.clamp(vx / 1920, 0.6, 1.4)
-        uiScale.Scale = s
+        local x = workspace.CurrentCamera.ViewportSize.X
+        uisc.Scale = mobile and math.clamp(x/1080,0.6,1.2) or math.clamp(x/1920,0.55,1.3)
     end
-    Camera:GetPropertyChangedSignal("ViewportSize"):Connect(rescale)
+    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(rescale)
     rescale()
 
-    -- MAIN CONTAINER
+    -- Main Frame
     local Main = Instance.new("Frame")
-    Main.Name = rid(6)
-    Main.Size = UDim2.new(0, W, 0, H)
-    Main.Position = UDim2.new(0.5, -W/2, 0.5, -H/2)
-    Main.BackgroundColor3 = C.bg
+    Main.Size = UDim2.new(0,W,0,H)
+    Main.Position = UDim2.new(0.5,-W/2,0.5,-H/2)
+    Main.BackgroundColor3 = P.bg
     Main.BorderSizePixel = 0
     Main.Active = true
     Main.Draggable = true
     Main.ClipsDescendants = true
-    Main.Parent = SG
+    Main.Parent = Screen
+    Instance.new("UICorner",Main).CornerRadius = UDim.new(0,8)
 
-    Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
+    -- Border stroke
+    local mStroke = Instance.new("UIStroke")
+    mStroke.Color = P.accent
+    mStroke.Thickness = 1.5
+    mStroke.Transparency = 0.4
+    mStroke.Parent = Main
 
-    local mainStroke = Instance.new("UIStroke")
-    mainStroke.Color = C.border
-    mainStroke.Thickness = 1.5
-    mainStroke.Transparency = 0.2
-    mainStroke.Parent = Main
+    -- Top accent bar (manga style - sharp red line)
+    local topBar = Instance.new("Frame")
+    topBar.Size = UDim2.new(1,0,0,3)
+    topBar.BackgroundColor3 = P.accent
+    topBar.BorderSizePixel = 0
+    topBar.ZIndex = 10
+    topBar.Parent = Main
 
-    -- TOP ACCENT LINE
-    local topLine = Instance.new("Frame")
-    topLine.Size = UDim2.new(1, 0, 0, 2)
-    topLine.BackgroundColor3 = C.accent
-    topLine.BorderSizePixel = 0
-    topLine.ZIndex = 5
-    topLine.Parent = Main
+    -- Title section
+    local titleH = 44
+    local titleBg = Instance.new("Frame")
+    titleBg.Size = UDim2.new(1,0,0,titleH)
+    titleBg.Position = UDim2.new(0,0,0,3)
+    titleBg.BackgroundColor3 = P.panel
+    titleBg.BorderSizePixel = 0
+    titleBg.Parent = Main
 
-    local lineGrad = Instance.new("UIGradient")
-    lineGrad.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(100, 60, 220)),
-        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(160, 80, 255)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 40, 180)),
-    }
-    lineGrad.Parent = topLine
+    -- Title text - manga style
+    local titleMain = Instance.new("TextLabel")
+    titleMain.Size = UDim2.new(0,120,0,20)
+    titleMain.Position = UDim2.new(0,14,0,6)
+    titleMain.BackgroundTransparency = 1
+    titleMain.Text = "SYN-STUDIO"
+    titleMain.TextColor3 = P.accent
+    titleMain.TextSize = 16*fs
+    titleMain.Font = Enum.Font.GothamBlack
+    titleMain.TextXAlignment = Enum.TextXAlignment.Left
+    titleMain.Parent = titleBg
 
-    -- TITLE BAR
-    local TH = math.clamp(H * 0.07, 36, 48)
+    local titleSub = Instance.new("TextLabel")
+    titleSub.Size = UDim2.new(0,100,0,12)
+    titleSub.Position = UDim2.new(0,14,0,27)
+    titleSub.BackgroundTransparency = 1
+    titleSub.Text = "EGG STEALER v5"
+    titleSub.TextColor3 = P.dim
+    titleSub.TextSize = 8*fs
+    titleSub.Font = Enum.Font.GothamBold
+    titleSub.TextXAlignment = Enum.TextXAlignment.Left
+    titleSub.Parent = titleBg
 
-    local TBar = Instance.new("Frame")
-    TBar.Size = UDim2.new(1, 0, 0, TH)
-    TBar.Position = UDim2.new(0, 0, 0, 2)
-    TBar.BackgroundColor3 = C.surface
-    TBar.BorderSizePixel = 0
-    TBar.Parent = Main
+    -- Red kanji-style decoration
+    local deco = Instance.new("TextLabel")
+    deco.Size = UDim2.new(0,20,0,20)
+    deco.Position = UDim2.new(0,138,0,7)
+    deco.BackgroundTransparency = 1
+    deco.Text = "/"
+    deco.TextColor3 = P.accent
+    deco.TextSize = 14
+    deco.Font = Enum.Font.GothamBlack
+    deco.Rotation = 15
+    deco.Parent = titleBg
 
-    local TTitle = Instance.new("TextLabel")
-    TTitle.Size = UDim2.new(1, -80, 1, 0)
-    TTitle.Position = UDim2.new(0, 16, 0, 0)
-    TTitle.BackgroundTransparency = 1
-    TTitle.Text = "SYN-STUDIO"
-    TTitle.TextColor3 = C.accent
-    TTitle.TextSize = MOBILE and 16 or 15
-    TTitle.Font = Enum.Font.GothamBold
-    TTitle.TextXAlignment = Enum.TextXAlignment.Left
-    TTitle.Parent = TBar
+    -- Buttons
+    local bsz = 28
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0,bsz,0,bsz)
+    closeBtn.Position = UDim2.new(1,-(bsz+8),0.5,-bsz/2)
+    closeBtn.BackgroundColor3 = P.red
+    closeBtn.Text = "x"
+    closeBtn.TextColor3 = P.white
+    closeBtn.TextSize = 12
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Parent = titleBg
+    Instance.new("UICorner",closeBtn).CornerRadius = UDim.new(0,6)
+    closeBtn.MouseButton1Click:Connect(function() FullStop() Screen:Destroy() end)
 
-    local TVersion = Instance.new("TextLabel")
-    TVersion.Size = UDim2.new(0, 30, 0, 14)
-    TVersion.Position = UDim2.new(0, 118, 0.5, -7)
-    TVersion.BackgroundColor3 = C.accent2
-    TVersion.BackgroundTransparency = 0.5
-    TVersion.Text = "v4"
-    TVersion.TextColor3 = C.textDim
-    TVersion.TextSize = 9
-    TVersion.Font = Enum.Font.GothamBold
-    TVersion.TextXAlignment = Enum.TextXAlignment.Center
-    TVersion.Parent = TBar
-    Instance.new("UICorner", TVersion).CornerRadius = UDim.new(0, 4)
+    local minBtn = Instance.new("TextButton")
+    minBtn.Size = UDim2.new(0,bsz,0,bsz)
+    minBtn.Position = UDim2.new(1,-(bsz*2+16),0.5,-bsz/2)
+    minBtn.BackgroundColor3 = P.card
+    minBtn.Text = "--"
+    minBtn.TextColor3 = P.dim
+    minBtn.TextSize = 10
+    minBtn.Font = Enum.Font.GothamBold
+    minBtn.BorderSizePixel = 0
+    minBtn.Parent = titleBg
+    Instance.new("UICorner",minBtn).CornerRadius = UDim.new(0,6)
 
-    -- Close
-    local BS = math.clamp(TH * 0.6, 22, 32)
+    -- Separator
+    local sep1 = Instance.new("Frame")
+    sep1.Size = UDim2.new(1,-20,0,1)
+    sep1.Position = UDim2.new(0,10,0,titleH+3)
+    sep1.BackgroundColor3 = P.line
+    sep1.BorderSizePixel = 0
+    sep1.Parent = Main
 
-    local CloseBtn = Instance.new("TextButton")
-    CloseBtn.Size = UDim2.new(0, BS, 0, BS)
-    CloseBtn.Position = UDim2.new(1, -(BS+8), 0.5, -BS/2)
-    CloseBtn.BackgroundColor3 = C.red
-    CloseBtn.Text = "x"
-    CloseBtn.TextColor3 = C.textBright
-    CloseBtn.TextSize = MOBILE and 14 or 12
-    CloseBtn.Font = Enum.Font.GothamBold
-    CloseBtn.BorderSizePixel = 0
-    CloseBtn.Parent = TBar
-    Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
+    -- Content
+    local contentTop = titleH + 8
+    local Content = Instance.new("ScrollingFrame")
+    Content.Size = UDim2.new(1,-12,1,-(contentTop+6))
+    Content.Position = UDim2.new(0,6,0,contentTop)
+    Content.BackgroundTransparency = 1
+    Content.BorderSizePixel = 0
+    Content.ScrollBarThickness = 2
+    Content.ScrollBarImageColor3 = P.accent
+    Content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    Content.CanvasSize = UDim2.new(0,0,0,0)
+    Content.Parent = Main
 
-    CloseBtn.MouseButton1Click:Connect(function()
-        Ctrl.FullStop()
-        SG:Destroy()
-    end)
+    local lay = Instance.new("UIListLayout")
+    lay.Padding = UDim.new(0,3)
+    lay.SortOrder = Enum.SortOrder.LayoutOrder
+    lay.Parent = Content
+
+    Instance.new("UIPadding",Content).PaddingBottom = UDim.new(0,16)
 
     -- Minimize
-    local MinBtn = Instance.new("TextButton")
-    MinBtn.Size = UDim2.new(0, BS, 0, BS)
-    MinBtn.Position = UDim2.new(1, -(BS*2+16), 0.5, -BS/2)
-    MinBtn.BackgroundColor3 = C.card
-    MinBtn.Text = "-"
-    MinBtn.TextColor3 = C.textDim
-    MinBtn.TextSize = MOBILE and 16 or 14
-    MinBtn.Font = Enum.Font.GothamBold
-    MinBtn.BorderSizePixel = 0
-    MinBtn.Parent = TBar
-    Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 6)
-
     local minimized = false
-    local ContentArea
-
-    MinBtn.MouseButton1Click:Connect(function()
+    minBtn.MouseButton1Click:Connect(function()
         minimized = not minimized
-        if ContentArea then ContentArea.Visible = not minimized end
-        Main.Size = minimized and UDim2.new(0, W, 0, TH + 4) or UDim2.new(0, W, 0, H)
-        MinBtn.Text = minimized and "+" or "-"
+        Content.Visible = not minimized
+        sep1.Visible = not minimized
+        Main.Size = minimized and UDim2.new(0,W,0,titleH+6) or UDim2.new(0,W,0,H)
+        minBtn.Text = minimized and "+" or "--"
     end)
 
-    -- SEPARATOR
-    local sep = Instance.new("Frame")
-    sep.Size = UDim2.new(1, -24, 0, 1)
-    sep.Position = UDim2.new(0, 12, 0, TH + 2)
-    sep.BackgroundColor3 = C.line
-    sep.BorderSizePixel = 0
-    sep.Parent = Main
+    -- ORDER
+    local _o = 0
+    local function no() _o=_o+1 return _o end
 
-    -- CONTENT SCROLL
-    ContentArea = Instance.new("ScrollingFrame")
-    ContentArea.Name = rid(5)
-    ContentArea.Size = UDim2.new(1, -16, 1, -(TH + 12))
-    ContentArea.Position = UDim2.new(0, 8, 0, TH + 6)
-    ContentArea.BackgroundTransparency = 1
-    ContentArea.BorderSizePixel = 0
-    ContentArea.ScrollBarThickness = 2
-    ContentArea.ScrollBarImageColor3 = C.accent
-    ContentArea.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    ContentArea.CanvasSize = UDim2.new(0, 0, 0, 0)
-    ContentArea.Parent = Main
+    -- ====== COMPONENTS ======
 
-    local listLayout = Instance.new("UIListLayout")
-    listLayout.Padding = UDim.new(0, 4)
-    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    listLayout.Parent = ContentArea
-
-    Instance.new("UIPadding", ContentArea).PaddingBottom = UDim.new(0, 12)
-
-    -- ORDER COUNTER
-    local _ord = 0
-    local function ord()
-        _ord = _ord + 1
-        return _ord
-    end
-
-    -- ===== UI COMPONENTS =====
-
-    local function Section(text)
+    local function MkSep(text)
         local f = Instance.new("Frame")
-        f.Size = UDim2.new(1, 0, 0, 26)
+        f.Size = UDim2.new(1,0,0,22)
         f.BackgroundTransparency = 1
-        f.BorderSizePixel = 0
-        f.LayoutOrder = ord()
-        f.Parent = ContentArea
+        f.LayoutOrder = no()
+        f.Parent = Content
+
+        -- Left red bar
+        local bar = Instance.new("Frame")
+        bar.Size = UDim2.new(0,3,0,12)
+        bar.Position = UDim2.new(0,2,0.5,-6)
+        bar.BackgroundColor3 = P.accent
+        bar.BorderSizePixel = 0
+        bar.Parent = f
 
         local l = Instance.new("TextLabel")
-        l.Size = UDim2.new(1, 0, 1, 0)
-        l.Position = UDim2.new(0, 4, 0, 0)
+        l.Size = UDim2.new(1,-12,1,0)
+        l.Position = UDim2.new(0,10,0,0)
         l.BackgroundTransparency = 1
         l.Text = text:upper()
-        l.TextColor3 = C.textDim
-        l.TextSize = MOBILE and 10 or 9
+        l.TextColor3 = P.dim
+        l.TextSize = 9*fs
         l.Font = Enum.Font.GothamBold
         l.TextXAlignment = Enum.TextXAlignment.Left
         l.Parent = f
-
-        -- underline
-        local ul = Instance.new("Frame")
-        ul.Size = UDim2.new(1, -8, 0, 1)
-        ul.Position = UDim2.new(0, 4, 1, -1)
-        ul.BackgroundColor3 = C.line
-        ul.BorderSizePixel = 0
-        ul.Parent = f
     end
 
-    local function Toggle(text, default, callback, dotColor)
-        local h = MOBILE and 36 or 32
+    local function MkToggle(text, default, cb, dotCol)
+        local h = 30
         local f = Instance.new("Frame")
-        f.Size = UDim2.new(1, 0, 0, h)
-        f.BackgroundColor3 = C.card
+        f.Size = UDim2.new(1,0,0,h)
+        f.BackgroundColor3 = P.card
         f.BorderSizePixel = 0
-        f.LayoutOrder = ord()
-        f.Parent = ContentArea
-        Instance.new("UICorner", f).CornerRadius = UDim.new(0, 6)
+        f.LayoutOrder = no()
+        f.Parent = Content
+        Instance.new("UICorner",f).CornerRadius = UDim.new(0,5)
 
-        local lx = 10
-        if dotColor then
+        local lx = 8
+        if dotCol then
             local dot = Instance.new("Frame")
-            dot.Size = UDim2.new(0, 8, 0, 8)
-            dot.Position = UDim2.new(0, 10, 0.5, -4)
-            dot.BackgroundColor3 = dotColor
+            dot.Size = UDim2.new(0,6,0,6)
+            dot.Position = UDim2.new(0,8,0.5,-3)
+            dot.BackgroundColor3 = dotCol
             dot.BorderSizePixel = 0
             dot.Parent = f
-            Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-            lx = 26
+            Instance.new("UICorner",dot).CornerRadius = UDim.new(1,0)
+            lx = 20
         end
 
         local l = Instance.new("TextLabel")
-        l.Size = UDim2.new(0.65, -lx, 1, 0)
-        l.Position = UDim2.new(0, lx, 0, 0)
+        l.Size = UDim2.new(1,-60,1,0)
+        l.Position = UDim2.new(0,lx,0,0)
         l.BackgroundTransparency = 1
         l.Text = text
-        l.TextColor3 = dotColor or C.text
-        l.TextSize = MOBILE and 12 or 11
-        l.Font = dotColor and Enum.Font.GothamBold or Enum.Font.Gotham
+        l.TextColor3 = dotCol or P.text
+        l.TextSize = 10*fs
+        l.Font = dotCol and Enum.Font.GothamBold or Enum.Font.Gotham
         l.TextXAlignment = Enum.TextXAlignment.Left
         l.TextTruncate = Enum.TextTruncate.AtEnd
         l.Parent = f
 
-        -- Toggle switch style
-        local sw_w = MOBILE and 42 or 38
-        local sw_h = MOBILE and 20 or 18
-        local sw = Instance.new("TextButton")
-        sw.Size = UDim2.new(0, sw_w, 0, sw_h)
-        sw.Position = UDim2.new(1, -(sw_w + 8), 0.5, -sw_h/2)
-        sw.BorderSizePixel = 0
-        sw.Text = ""
-        sw.AutoButtonColor = false
-        sw.Parent = f
-        Instance.new("UICorner", sw).CornerRadius = UDim.new(1, 0)
+        -- Switch track
+        local tw,th = 34,16
+        local track = Instance.new("TextButton")
+        track.Size = UDim2.new(0,tw,0,th)
+        track.Position = UDim2.new(1,-(tw+6),0.5,-th/2)
+        track.BorderSizePixel = 0
+        track.Text = ""
+        track.AutoButtonColor = false
+        track.Parent = f
+        Instance.new("UICorner",track).CornerRadius = UDim.new(1,0)
 
-        -- Knob inside switch
-        local knob_sz = sw_h - 4
+        local ksz = th-4
         local knob = Instance.new("Frame")
-        knob.Size = UDim2.new(0, knob_sz, 0, knob_sz)
-        knob.BackgroundColor3 = C.textBright
+        knob.Size = UDim2.new(0,ksz,0,ksz)
+        knob.BackgroundColor3 = P.white
         knob.BorderSizePixel = 0
-        knob.Parent = sw
-        Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+        knob.Parent = track
+        Instance.new("UICorner",knob).CornerRadius = UDim.new(1,0)
 
         local on = default
-        local function upd(animate)
-            local dur = animate and 0.15 or 0
+        local function upd(anim)
+            local d = anim and 0.12 or 0
             if on then
-                TweenService:Create(sw, TweenInfo.new(dur), {BackgroundColor3 = C.green}):Play()
-                TweenService:Create(knob, TweenInfo.new(dur), {Position = UDim2.new(1, -(knob_sz+2), 0.5, -knob_sz/2)}):Play()
+                TS:Create(track,TweenInfo.new(d),{BackgroundColor3=P.green}):Play()
+                TS:Create(knob,TweenInfo.new(d),{Position=UDim2.new(1,-(ksz+2),0.5,-ksz/2)}):Play()
             else
-                TweenService:Create(sw, TweenInfo.new(dur), {BackgroundColor3 = C.sliderBg}):Play()
-                TweenService:Create(knob, TweenInfo.new(dur), {Position = UDim2.new(0, 2, 0.5, -knob_sz/2)}):Play()
+                TS:Create(track,TweenInfo.new(d),{BackgroundColor3=P.dimmer}):Play()
+                TS:Create(knob,TweenInfo.new(d),{Position=UDim2.new(0,2,0.5,-ksz/2)}):Play()
             end
         end
         upd(false)
 
-        sw.MouseButton1Click:Connect(function()
+        track.MouseButton1Click:Connect(function()
             on = not on
             upd(true)
-            if callback then callback(on) end
+            if cb then cb(on) end
         end)
 
-        return f, function() return on end
+        -- Hover
+        f.MouseEnter:Connect(function()
+            TS:Create(f,TweenInfo.new(0.1),{BackgroundColor3=P.cardHi}):Play()
+        end)
+        f.MouseLeave:Connect(function()
+            TS:Create(f,TweenInfo.new(0.1),{BackgroundColor3=P.card}):Play()
+        end)
+
+        return f
     end
 
-    local function Slider(text, minV, maxV, default, callback)
-        local h = MOBILE and 48 or 44
+    local function MkSlider(text, mn, mx, def, cb)
+        local h = 40
         local f = Instance.new("Frame")
-        f.Size = UDim2.new(1, 0, 0, h)
-        f.BackgroundColor3 = C.card
+        f.Size = UDim2.new(1,0,0,h)
+        f.BackgroundColor3 = P.card
         f.BorderSizePixel = 0
-        f.LayoutOrder = ord()
-        f.Parent = ContentArea
-        Instance.new("UICorner", f).CornerRadius = UDim.new(0, 6)
+        f.LayoutOrder = no()
+        f.Parent = Content
+        Instance.new("UICorner",f).CornerRadius = UDim.new(0,5)
 
         local l = Instance.new("TextLabel")
-        l.Size = UDim2.new(0.6, 0, 0, h * 0.45)
-        l.Position = UDim2.new(0, 10, 0, 2)
+        l.Size = UDim2.new(0.55,0,0,18)
+        l.Position = UDim2.new(0,8,0,2)
         l.BackgroundTransparency = 1
         l.Text = text
-        l.TextColor3 = C.text
-        l.TextSize = MOBILE and 11 or 10
+        l.TextColor3 = P.text
+        l.TextSize = 9*fs
         l.Font = Enum.Font.Gotham
         l.TextXAlignment = Enum.TextXAlignment.Left
-        l.TextTruncate = Enum.TextTruncate.AtEnd
         l.Parent = f
 
         local vl = Instance.new("TextLabel")
-        vl.Size = UDim2.new(0.35, 0, 0, h * 0.45)
-        vl.Position = UDim2.new(0.63, 0, 0, 2)
+        vl.Size = UDim2.new(0.4,0,0,18)
+        vl.Position = UDim2.new(0.58,0,0,2)
         vl.BackgroundTransparency = 1
-        vl.Text = tostring(default)
-        vl.TextColor3 = C.accent
-        vl.TextSize = MOBILE and 11 or 10
+        vl.Text = tostring(def)
+        vl.TextColor3 = P.accent
+        vl.TextSize = 10*fs
         vl.Font = Enum.Font.GothamBold
         vl.TextXAlignment = Enum.TextXAlignment.Right
         vl.Parent = f
 
-        local barH = math.clamp(h * 0.12, 4, 8)
-        local barY = h * 0.65
-
+        local bH = 4
         local bg = Instance.new("Frame")
-        bg.Size = UDim2.new(1, -20, 0, barH)
-        bg.Position = UDim2.new(0, 10, 0, barY)
-        bg.BackgroundColor3 = C.sliderBg
+        bg.Size = UDim2.new(1,-16,0,bH)
+        bg.Position = UDim2.new(0,8,0,28)
+        bg.BackgroundColor3 = P.dimmer
         bg.BorderSizePixel = 0
         bg.Parent = f
-        Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
+        Instance.new("UICorner",bg).CornerRadius = UDim.new(1,0)
 
-        local initA = math.clamp((default - minV) / (maxV - minV), 0, 1)
+        local ia = math.clamp((def-mn)/(mx-mn),0,1)
 
         local fill = Instance.new("Frame")
-        fill.Size = UDim2.new(initA, 0, 1, 0)
-        fill.BackgroundColor3 = C.slider
+        fill.Size = UDim2.new(ia,0,1,0)
+        fill.BackgroundColor3 = P.accent
         fill.BorderSizePixel = 0
         fill.Parent = bg
-        Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+        Instance.new("UICorner",fill).CornerRadius = UDim.new(1,0)
 
-        local kSz = math.clamp(barH * 2.5, 12, 18)
+        local ksz = 12
         local knob = Instance.new("TextButton")
-        knob.Size = UDim2.new(0, kSz, 0, kSz)
-        knob.Position = UDim2.new(initA, -kSz/2, 0.5, -kSz/2)
-        knob.BackgroundColor3 = C.accent
+        knob.Size = UDim2.new(0,ksz,0,ksz)
+        knob.Position = UDim2.new(ia,-ksz/2,0.5,-ksz/2)
+        knob.BackgroundColor3 = P.white
         knob.Text = ""
         knob.BorderSizePixel = 0
         knob.ZIndex = 3
         knob.AutoButtonColor = false
         knob.Parent = bg
-        Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+        Instance.new("UICorner",knob).CornerRadius = UDim.new(1,0)
 
-        local dragging = false
+        local drag = false
 
-        local function setAlpha(a)
-            a = math.clamp(a, 0, 1)
-            fill.Size = UDim2.new(a, 0, 1, 0)
-            knob.Position = UDim2.new(a, -kSz/2, 0.5, -kSz/2)
-            local val = math.floor(minV + (maxV - minV) * a)
+        local function setA(a)
+            a = math.clamp(a,0,1)
+            fill.Size = UDim2.new(a,0,1,0)
+            knob.Position = UDim2.new(a,-ksz/2,0.5,-ksz/2)
+            local val = math.floor(mn + (mx-mn)*a)
             vl.Text = tostring(val)
-            if callback then callback(val) end
+            if cb then cb(val) end
         end
 
-        local function inputHandler(inputPos)
+        local function handle(pos)
             local ap = bg.AbsolutePosition
             local as = bg.AbsoluteSize
-            local rx = math.clamp((inputPos.X - ap.X) / as.X, 0, 1)
-            setAlpha(rx)
+            setA((pos.X - ap.X) / as.X)
         end
 
-        knob.MouseButton1Down:Connect(function() dragging = true end)
-
-        bg.InputBegan:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.MouseButton1 or
-               inp.UserInputType == Enum.UserInputType.Touch then
-                inputHandler(inp.Position)
-                dragging = true
+        knob.MouseButton1Down:Connect(function() drag=true end)
+        bg.InputBegan:Connect(function(i)
+            if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+                handle(i.Position) drag=true
             end
         end)
-
-        UserInputService.InputChanged:Connect(function(inp)
-            if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or
-               inp.UserInputType == Enum.UserInputType.Touch) then
-                inputHandler(inp.Position)
+        UIS.InputChanged:Connect(function(i)
+            if drag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+                handle(i.Position)
             end
         end)
-
-        UserInputService.InputEnded:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.MouseButton1 or
-               inp.UserInputType == Enum.UserInputType.Touch then
-                dragging = false
+        UIS.InputEnded:Connect(function(i)
+            if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+                drag=false
             end
         end)
 
         return f
     end
 
-    local function Button(text, color, callback)
-        local h = MOBILE and 38 or 34
+    local function MkBtn(text, col, cb)
+        local h = 32
         local b = Instance.new("TextButton")
-        b.Size = UDim2.new(1, 0, 0, h)
-        b.BackgroundColor3 = color
+        b.Size = UDim2.new(1,0,0,h)
+        b.BackgroundColor3 = col
         b.Text = text
-        b.TextColor3 = C.textBright
-        b.TextSize = MOBILE and 13 or 12
+        b.TextColor3 = P.white
+        b.TextSize = 11*fs
         b.Font = Enum.Font.GothamBold
         b.BorderSizePixel = 0
         b.AutoButtonColor = false
-        b.LayoutOrder = ord()
-        b.Parent = ContentArea
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 7)
+        b.LayoutOrder = no()
+        b.Parent = Content
+        Instance.new("UICorner",b).CornerRadius = UDim.new(0,5)
 
-        -- Hover
-        local origColor = color
+        local oc = col
         b.MouseEnter:Connect(function()
-            TweenService:Create(b, TweenInfo.new(0.12), {
-                BackgroundColor3 = Color3.new(
-                    math.min(color.R * 1.2, 1),
-                    math.min(color.G * 1.2, 1),
-                    math.min(color.B * 1.2, 1)
-                )
-            }):Play()
+            TS:Create(b,TweenInfo.new(0.1),{BackgroundColor3=Color3.new(math.min(col.R*1.25,1),math.min(col.G*1.25,1),math.min(col.B*1.25,1))}):Play()
         end)
         b.MouseLeave:Connect(function()
-            TweenService:Create(b, TweenInfo.new(0.12), {BackgroundColor3 = origColor}):Play()
+            TS:Create(b,TweenInfo.new(0.1),{BackgroundColor3=oc}):Play()
         end)
-
         b.MouseButton1Click:Connect(function()
-            -- Click feedback
-            TweenService:Create(b, TweenInfo.new(0.05), {BackgroundColor3 = C.textBright}):Play()
-            task.wait(0.05)
-            TweenService:Create(b, TweenInfo.new(0.1), {BackgroundColor3 = origColor}):Play()
-            if callback then callback(b) end
+            TS:Create(b,TweenInfo.new(0.04),{BackgroundColor3=P.white}):Play()
+            task.wait(0.04)
+            TS:Create(b,TweenInfo.new(0.08),{BackgroundColor3=oc}):Play()
+            if cb then cb(b) end
         end)
 
         return b
     end
 
-    -- ===== STATUS BAR =====
-    local statusH = MOBILE and 50 or 44
-    local statusF = Instance.new("Frame")
-    statusF.Size = UDim2.new(1, 0, 0, statusH)
-    statusF.BackgroundColor3 = Color3.fromRGB(14, 20, 14)
-    statusF.BorderSizePixel = 0
-    statusF.LayoutOrder = ord()
-    statusF.Parent = ContentArea
-    Instance.new("UICorner", statusF).CornerRadius = UDim.new(0, 6)
+    -- ====== STATUS ======
+    local stH = 40
+    local stF = Instance.new("Frame")
+    stF.Size = UDim2.new(1,0,0,stH)
+    stF.BackgroundColor3 = Color3.fromRGB(14,18,14)
+    stF.BorderSizePixel = 0
+    stF.LayoutOrder = no()
+    stF.Parent = Content
+    Instance.new("UICorner",stF).CornerRadius = UDim.new(0,5)
 
-    local statusStroke = Instance.new("UIStroke")
-    statusStroke.Color = Color3.fromRGB(35, 80, 35)
-    statusStroke.Thickness = 1
-    statusStroke.Transparency = 0.3
-    statusStroke.Parent = statusF
+    -- Left accent bar on status
+    local stBar = Instance.new("Frame")
+    stBar.Size = UDim2.new(0,2,0.7,0)
+    stBar.Position = UDim2.new(0,4,0.15,0)
+    stBar.BackgroundColor3 = P.green
+    stBar.BorderSizePixel = 0
+    stBar.Parent = stF
 
-    -- Status indicator dot
-    local statusDot = Instance.new("Frame")
-    statusDot.Size = UDim2.new(0, 6, 0, 6)
-    statusDot.Position = UDim2.new(0, 10, 0, 10)
-    statusDot.BackgroundColor3 = C.textDim
-    statusDot.BorderSizePixel = 0
-    statusDot.Parent = statusF
-    Instance.new("UICorner", statusDot).CornerRadius = UDim.new(1, 0)
+    local stLbl = Instance.new("TextLabel")
+    stLbl.Size = UDim2.new(1,-16,1,0)
+    stLbl.Position = UDim2.new(0,12,0,0)
+    stLbl.BackgroundTransparency = 1
+    stLbl.Text = "IDLE"
+    stLbl.TextColor3 = Color3.fromRGB(130,210,130)
+    stLbl.TextSize = 9*fs
+    stLbl.Font = Enum.Font.Gotham
+    stLbl.TextXAlignment = Enum.TextXAlignment.Left
+    stLbl.TextWrapped = true
+    stLbl.Parent = stF
 
-    local statusLbl = Instance.new("TextLabel")
-    statusLbl.Name = "SL"
-    statusLbl.Size = UDim2.new(1, -24, 1, 0)
-    statusLbl.Position = UDim2.new(0, 22, 0, 0)
-    statusLbl.BackgroundTransparency = 1
-    statusLbl.Text = "IDLE  |  No target"
-    statusLbl.TextColor3 = Color3.fromRGB(120, 200, 120)
-    statusLbl.TextSize = MOBILE and 11 or 10
-    statusLbl.Font = Enum.Font.Gotham
-    statusLbl.TextXAlignment = Enum.TextXAlignment.Left
-    statusLbl.TextWrapped = true
-    statusLbl.Parent = statusF
+    -- ====== BUILD SECTIONS ======
+    MkSep("Controls")
 
-    -- ===== CONTROLS =====
-    Section("Controls")
-
-    local isRunning = false
-    Button("START", C.green, function(btn)
-        isRunning = not isRunning
-        if isRunning then
-            btn.BackgroundColor3 = C.redBright
+    local running = false
+    MkBtn("START", P.green, function(btn)
+        running = not running
+        if running then
+            btn.BackgroundColor3 = P.red
             btn.Text = "STOP"
-            MainLoop.Start()
+            StartLoop()
         else
-            btn.BackgroundColor3 = C.green
+            btn.BackgroundColor3 = P.green
             btn.Text = "START"
-            Ctrl.FullStop()
+            FullStop()
         end
     end)
 
-    Button("Set Safe Zone at Current Position", C.accent2, function()
-        CFG.SafePos = GetPos()
-        Notify("Safe zone position saved.", 2)
+    MkBtn("Set Safe Zone Here", P.accent2, function()
+        Config.SafePos = MyPos()
+        Notify("Safe zone saved",2)
     end)
 
-    -- ===== FEATURES =====
-    Section("Features")
-
-    Toggle("Instant Steal", CFG.InstantSteal, function(v) CFG.InstantSteal = v end)
-    Toggle("Auto Escape", CFG.AutoEscape, function(v) CFG.AutoEscape = v end)
-    Toggle("Big Egg Priority", CFG.BigPriority, function(v) CFG.BigPriority = v end)
-    Toggle("Anti-Drop Boost", CFG.AntiDrop, function(v) CFG.AntiDrop = v end)
-    Toggle("Show ESP", CFG.ESP, function(v)
-        CFG.ESP = v
-        if not v then ESP.Clear() end
+    MkSep("Features")
+    MkToggle("Instant Steal", true, function(v) Config.InstantSteal=v end)
+    MkToggle("Auto Escape", Config.AutoEsc, function(v) Config.AutoEsc=v end)
+    MkToggle("Big Egg Priority", Config.BigMode, function(v) Config.BigMode=v end)
+    MkToggle("Anti-Drop", Config.AntiDrop, function(v) Config.AntiDrop=v end)
+    MkToggle("Show ESP", Config.ShowESP, function(v)
+        Config.ShowESP=v
+        if not v then ClearESP() end
     end)
-    Toggle("Stealth Mode", CFG.Stealth, function(v) CFG.Stealth = v end)
 
-    -- ===== SPEED =====
-    Section("Speed")
+    MkSep("Speed")
+    MkSlider("Move Speed", 60, 400, Config.Speed, function(v) Config.Speed=v end)
+    MkSlider("Escape Speed", 60, 500, Config.EscSpeed, function(v) Config.EscSpeed=v end)
+    MkSlider("Big Egg KG", 100, 5000, Config.BigKG, function(v) Config.BigKG=v end)
+    MkSlider("Grab Distance", 5, 30, Config.GrabDist, function(v) Config.GrabDist=v end)
 
-    Slider("Move Speed", 80, 500, CFG.MoveSpeed, function(v) CFG.MoveSpeed = v end)
-    Slider("Escape Speed", 80, 600, CFG.EscSpeed, function(v) CFG.EscSpeed = v end)
-    Slider("Acceleration", 2, 20, CFG.Acceleration, function(v) CFG.Acceleration = v end)
-    Slider("Big Egg Threshold (kg)", 100, 5000, CFG.BigKG, function(v) CFG.BigKG = v end)
+    MkSep("Rarity Filter")
 
-    -- ===== RARITY FILTER =====
-    Section("Rarity Filter")
-
-    local rarityToggles = {}
-
-    for _, r in ipairs(CFG.RarityOrder) do
-        local data = CFG.Rarity[r]
-        local _, getter = Toggle(r, data.On, function(v)
-            CFG.Rarity[r].On = v
-        end, data.Color)
-        rarityToggles[r] = getter
+    for _,r in ipairs(Config.RarityList) do
+        MkToggle(r, Config.RarityEnabled[r], function(v)
+            Config.RarityEnabled[r] = v
+        end, Config.RarityCol[r])
     end
 
-    -- Select All / Deselect All row
-    local selFrame = Instance.new("Frame")
-    selFrame.Size = UDim2.new(1, 0, 0, MOBILE and 32 or 28)
-    selFrame.BackgroundTransparency = 1
-    selFrame.LayoutOrder = ord()
-    selFrame.Parent = ContentArea
+    -- All on / All off
+    local selF = Instance.new("Frame")
+    selF.Size = UDim2.new(1,0,0,26)
+    selF.BackgroundTransparency = 1
+    selF.LayoutOrder = no()
+    selF.Parent = Content
 
-    local selAll = Instance.new("TextButton")
-    selAll.Size = UDim2.new(0.48, 0, 1, 0)
-    selAll.BackgroundColor3 = C.greenDim
-    selAll.Text = "All On"
-    selAll.TextColor3 = C.text
-    selAll.TextSize = MOBILE and 11 or 10
-    selAll.Font = Enum.Font.GothamBold
-    selAll.BorderSizePixel = 0
-    selAll.Parent = selFrame
-    Instance.new("UICorner", selAll).CornerRadius = UDim.new(0, 5)
+    local function mkSmallBtn(txt, col, pos, cb)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(0.48,0,1,0)
+        b.Position = pos
+        b.BackgroundColor3 = col
+        b.Text = txt
+        b.TextColor3 = P.text
+        b.TextSize = 9*fs
+        b.Font = Enum.Font.GothamBold
+        b.BorderSizePixel = 0
+        b.Parent = selF
+        Instance.new("UICorner",b).CornerRadius = UDim.new(0,4)
+        b.MouseButton1Click:Connect(cb)
+        return b
+    end
 
-    local deselAll = Instance.new("TextButton")
-    deselAll.Size = UDim2.new(0.48, 0, 1, 0)
-    deselAll.Position = UDim2.new(0.52, 0, 0, 0)
-    deselAll.BackgroundColor3 = C.redDim
-    deselAll.Text = "All Off"
-    deselAll.TextColor3 = C.text
-    deselAll.TextSize = MOBILE and 11 or 10
-    deselAll.Font = Enum.Font.GothamBold
-    deselAll.BorderSizePixel = 0
-    deselAll.Parent = selFrame
-    Instance.new("UICorner", deselAll).CornerRadius = UDim.new(0, 5)
-
-    selAll.MouseButton1Click:Connect(function()
-        for r in pairs(CFG.Rarity) do CFG.Rarity[r].On = true end
-        SG:Destroy()
-        UI.Build()
+    mkSmallBtn("All On", Color3.fromRGB(30,70,35), UDim2.new(0,0,0,0), function()
+        for _,r in ipairs(Config.RarityList) do Config.RarityEnabled[r]=true end
+        Screen:Destroy() BuildUI()
+    end)
+    mkSmallBtn("All Off", Color3.fromRGB(70,30,30), UDim2.new(0.52,0,0,0), function()
+        for _,r in ipairs(Config.RarityList) do Config.RarityEnabled[r]=false end
+        Screen:Destroy() BuildUI()
     end)
 
-    deselAll.MouseButton1Click:Connect(function()
-        for r in pairs(CFG.Rarity) do CFG.Rarity[r].On = false end
-        SG:Destroy()
-        UI.Build()
-    end)
-
-    -- ===== INFO =====
-    Section("Info")
+    MkSep("Hotkeys")
 
     local infoF = Instance.new("Frame")
-    infoF.Size = UDim2.new(1, 0, 0, MOBILE and 60 or 52)
-    infoF.BackgroundColor3 = C.card
+    infoF.Size = UDim2.new(1,0,0,48)
+    infoF.BackgroundColor3 = P.card
     infoF.BorderSizePixel = 0
-    infoF.LayoutOrder = ord()
-    infoF.Parent = ContentArea
-    Instance.new("UICorner", infoF).CornerRadius = UDim.new(0, 6)
+    infoF.LayoutOrder = no()
+    infoF.Parent = Content
+    Instance.new("UICorner",infoF).CornerRadius = UDim.new(0,5)
 
-    local infoLbl = Instance.new("TextLabel")
-    infoLbl.Size = UDim2.new(1, -14, 1, 0)
-    infoLbl.Position = UDim2.new(0, 7, 0, 0)
-    infoLbl.BackgroundTransparency = 1
-    infoLbl.Text = "SYN-STUDIO v4.0\nRightShift  Toggle UI\nF5  Start/Stop  |  F6  ESP  |  F7  Safe Zone"
-    infoLbl.TextColor3 = C.textDim
-    infoLbl.TextSize = MOBILE and 9 or 8
-    infoLbl.Font = Enum.Font.Gotham
-    infoLbl.TextXAlignment = Enum.TextXAlignment.Left
-    infoLbl.TextYAlignment = Enum.TextYAlignment.Center
-    infoLbl.TextWrapped = true
-    infoLbl.Parent = infoF
+    local infoL = Instance.new("TextLabel")
+    infoL.Size = UDim2.new(1,-12,1,0)
+    infoL.Position = UDim2.new(0,6,0,0)
+    infoL.BackgroundTransparency = 1
+    infoL.RichText = true
+    infoL.Text = '<font color="#DC3250">RightShift</font>  Toggle UI\n<font color="#DC3250">F5</font>  Start / Stop\n<font color="#DC3250">F6</font>  Toggle ESP     <font color="#DC3250">F7</font>  Set Safe Zone'
+    infoL.TextColor3 = P.dim
+    infoL.TextSize = 8*fs
+    infoL.Font = Enum.Font.Gotham
+    infoL.TextXAlignment = Enum.TextXAlignment.Left
+    infoL.TextYAlignment = Enum.TextYAlignment.Center
+    infoL.Parent = infoF
 
-    -- ===== MOBILE TOGGLE BUTTON =====
-    if MOBILE then
-        local mobBtn = Instance.new("TextButton")
-        mobBtn.Size = UDim2.new(0, 44, 0, 44)
-        mobBtn.Position = UDim2.new(0, 8, 0.5, -22)
-        mobBtn.BackgroundColor3 = C.accent
-        mobBtn.BackgroundTransparency = 0.2
-        mobBtn.Text = "S"
-        mobBtn.TextSize = 18
-        mobBtn.Font = Enum.Font.GothamBold
-        mobBtn.TextColor3 = C.textBright
-        mobBtn.BorderSizePixel = 0
-        mobBtn.Draggable = true
-        mobBtn.Parent = SG
-        Instance.new("UICorner", mobBtn).CornerRadius = UDim.new(1, 0)
-
-        mobBtn.MouseButton1Click:Connect(function()
-            Main.Visible = not Main.Visible
-        end)
+    -- MOBILE TOGGLE
+    if mobile then
+        local mb = Instance.new("TextButton")
+        mb.Size = UDim2.new(0,42,0,42)
+        mb.Position = UDim2.new(0,6,0.5,-21)
+        mb.BackgroundColor3 = P.accent
+        mb.BackgroundTransparency = 0.15
+        mb.Text = "S"
+        mb.TextSize = 16
+        mb.Font = Enum.Font.GothamBlack
+        mb.TextColor3 = P.white
+        mb.BorderSizePixel = 0
+        mb.Draggable = true
+        mb.Parent = Screen
+        Instance.new("UICorner",mb).CornerRadius = UDim.new(1,0)
+        mb.MouseButton1Click:Connect(function() Main.Visible = not Main.Visible end)
     end
 
-    -- ===== STATUS UPDATE =====
+    -- STATUS UPDATE
     task.spawn(function()
-        while SG and SG.Parent do
+        while Screen and Screen.Parent do
             local txt = ""
-            local dotCol = C.textDim
+            local barCol = P.dim
 
-            if CFG.Active then
-                if STATE.Grabbing then
+            if Config.Active then
+                if State.Moving then
                     txt = "MOVING TO TARGET"
-                    dotCol = Color3.fromRGB(255, 200, 50)
-                elseif STATE.Escaping then
-                    txt = "ESCAPING TO SAFE ZONE"
-                    dotCol = Color3.fromRGB(255, 130, 30)
-                elseif STATE.HasEgg then
-                    txt = "CARRYING EGG"
-                    dotCol = Color3.fromRGB(100, 200, 255)
+                    barCol = P.orange
+                elseif State.Escaping then
+                    txt = "ESCAPING"
+                    barCol = P.cyan
+                elseif State.HasEgg then
+                    txt = "CARRYING"
+                    barCol = P.blue
                 else
                     txt = "SCANNING"
-                    dotCol = C.green
+                    barCol = P.green
                 end
             else
                 txt = "IDLE"
-                dotCol = C.textDim
+                barCol = P.dim
             end
 
-            if STATE.Target and STATE.TargetRar then
-                local bt = STATE.TargetKG >= CFG.BigKG and
-                    ("  [BIG " .. STATE.TargetKG .. "kg]") or ""
-                txt = txt .. "  |  " .. STATE.TargetRar:upper() .. bt
-            else
-                txt = txt .. "  |  No target"
+            if State.Target and State.TargetRar then
+                local bt = State.TargetKG >= Config.BigKG and ("  BIG "..State.TargetKG.."kg") or ""
+                txt = txt .. "  //  " .. State.TargetRar:upper() .. bt
             end
 
-            if statusLbl and statusLbl.Parent then
-                statusLbl.Text = txt
-            end
-            if statusDot and statusDot.Parent then
-                statusDot.BackgroundColor3 = dotCol
-            end
+            pcall(function()
+                stLbl.Text = txt
+                stBar.BackgroundColor3 = barCol
+            end)
 
-            task.wait(0.2)
+            task.wait(0.25)
         end
     end)
 
-    -- Toggle visibility
-    local togConn = UserInputService.InputBegan:Connect(function(inp, gpe)
-        if gpe then return end
-        if inp.KeyCode == Enum.KeyCode.RightShift then
+    -- UI TOGGLE KEY
+    UIS.InputBegan:Connect(function(i,g)
+        if g then return end
+        if i.KeyCode == Enum.KeyCode.RightShift then
             Main.Visible = not Main.Visible
         end
     end)
-    AddConn(togConn)
 
-    return SG
+    return Screen
 end
 
--- ============================================================
+-- =============================================
 -- HOTKEYS
--- ============================================================
-UserInputService.InputBegan:Connect(function(inp, gpe)
-    if gpe then return end
-
-    if inp.KeyCode == Enum.KeyCode.F5 then
-        CFG.Active = not CFG.Active
-        if CFG.Active then
-            MainLoop.Start()
-            Notify("Started.", 2)
-        else
-            Ctrl.FullStop()
-            Notify("Stopped.", 2)
-        end
+-- =============================================
+UIS.InputBegan:Connect(function(i,g)
+    if g then return end
+    if i.KeyCode == Enum.KeyCode.F5 then
+        Config.Active = not Config.Active
+        if Config.Active then StartLoop() Notify("Started",1)
+        else FullStop() Notify("Stopped",1) end
     end
-
-    if inp.KeyCode == Enum.KeyCode.F6 then
-        CFG.ESP = not CFG.ESP
-        if not CFG.ESP then ESP.Clear() end
-        Notify("ESP " .. (CFG.ESP and "enabled" or "disabled"), 1)
+    if i.KeyCode == Enum.KeyCode.F6 then
+        Config.ShowESP = not Config.ShowESP
+        if not Config.ShowESP then ClearESP() end
+        Notify("ESP "..(Config.ShowESP and "on" or "off"),1)
     end
-
-    if inp.KeyCode == Enum.KeyCode.F7 then
-        CFG.SafePos = GetPos()
-        Notify("Safe zone saved.", 1)
+    if i.KeyCode == Enum.KeyCode.F7 then
+        Config.SafePos = MyPos()
+        Notify("Safe zone set",1)
     end
 end)
 
--- ============================================================
+-- =============================================
 -- RESPAWN
--- ============================================================
+-- =============================================
 LP.CharacterAdded:Connect(function()
     task.wait(1)
-    STATE.Grabbing = false
-    STATE.Escaping = false
-    STATE.Carrying = false
-    STATE.HasEgg = false
-    STATE.Target = nil
-    Mover.Stop()
+    State.Moving=false State.Escaping=false State.HasEgg=false State.Target=nil
+    StopMove()
 end)
 
--- ============================================================
+-- =============================================
 -- INIT
--- ============================================================
-UI.Build()
-Notify("SYN-STUDIO v4 loaded. Configure and press START.", 4)
+-- =============================================
+BuildUI()
+Notify("SYN-STUDIO v5 loaded",3)
